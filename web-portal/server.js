@@ -261,22 +261,26 @@ async function sendClientReminderEmail(username, email, daysLeft, expDateString)
   }
 }
 
-// 🔥 INSTANT WELCOME EMAIL GENERATOR ON ACCOUNT CREATION
-async function sendClientWelcomeEmail(username, email, daysLeft, expDateString) {
+// 🔥 INSTANT WELCOME EMAIL GENERATOR ON ACCOUNT CREATION & EDITING
+async function sendClientWelcomeEmail(username, email, password, duration, limit, expDateString, serverIp) {
   try {
-    const clientHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
+    const configSettings = getSettings();
+    const welcomeText = configSettings.welcomeMessage || DEFAULT_WELCOME_MSG;
+    const profileLine = `${serverIp}:1-65535@${username}:${password}`;
+
+    const welcomeHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
         <h2 style="text-align: center; color: #4f46e5; border-bottom: 2px solid #24314f; padding-bottom: 12px;">🎉 Welcome to Meddix Pro VPN Service</h2>
         <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6; margin-top: 16px;">Hello <strong>${username}</strong>,</p>
         <p style="font-size: 14px; line-height: 1.6; color: #d1d5db; margin-top: 10px;">
-          ${getSettings().welcomeMessage || DEFAULT_WELCOME_MSG}
+          ${welcomeText}
         </p>
         
         <h3 style="color: #10b981; margin-top: 24px; border-bottom: 1px solid #24314f; padding-bottom: 6px; font-size: 14px; text-transform: uppercase;">📋 Your Tunnel Credentials</h3>
         <div style="background: #151d30; border-radius: 8px; padding: 16px; margin: 12px 0; border: 1px solid #24314f; font-family: monospace; font-size: 13px;">
           <div style="margin-bottom: 6px;">👤 Username: <strong>${username}</strong></div>
           <div style="margin-bottom: 6px;">🔑 Password: <strong>${password}</strong></div>
-          <div style="margin-bottom: 6px;">⏱️ Duration: <strong>${daysLeft}</strong></div>
+          <div style="margin-bottom: 6px;">⏱️ Duration: <strong>${duration}</strong></div>
           <div style="margin-bottom: 6px;">📅 Expiration: <strong>${expDateString}</strong></div>
           <div>💻 Limit: <strong>${limit} concurrent connections</strong></div>
         </div>
@@ -284,7 +288,7 @@ async function sendClientWelcomeEmail(username, email, daysLeft, expDateString) 
         <h3 style="color: #4f46e5; margin-top: 24px; border-bottom: 1px solid #24314f; padding-bottom: 6px; font-size: 14px; text-transform: uppercase;">🚀 HTTP Custom Profile</h3>
         <p style="font-size: 13px; color: #9ca3af; margin-bottom: 8px;">Copy the connection profile line below and paste it directly into your HTTP Custom application:</p>
         <div style="background: #0b0f19; border: 1px solid #24314f; border-radius: 8px; padding: 12px 14px; font-family: monospace; font-size: 13px; color: #4f46e5; word-break: break-all;">
-          ${serverIp}:1-65535@${username}:${password}
+          ${profileLine}
         </div>
         
         <p style="font-size: 13px; line-height: 1.5; color: #9ca3af; margin-top: 20px;">
@@ -304,7 +308,7 @@ async function sendClientWelcomeEmail(username, email, daysLeft, expDateString) 
       html: welcomeHtml
     });
 
-    console.log(`✉️ Welcome email successfully sent to new client: ${username} (${email})`);
+    console.log(`✉️ Welcome email successfully sent to client: ${username} (${email})`);
   } catch (err) {
     console.error(`Failed to send welcome email to client ${username}:`, err.message);
   }
@@ -539,6 +543,32 @@ app.post('/api/users/update-details', async (req, res) => {
     };
     fs.mkdirSync('/etc/UDPCustom/expiration', { recursive: true });
     fs.writeFileSync(expFile, JSON.stringify(metadata, null, 2));
+
+    // 🔥 INSTANT WELCOME EMAIL TRIGGER ON DETAILS EDIT (If email is newly populated!)
+    if (email && email.trim() !== '') {
+      // Extract their current password and connection limit from /etc/passwd
+      const passwdLine = await execPromise(`cat /etc/passwd | grep "^${username}:" || true`);
+      if (passwdLine) {
+        const parts = passwdLine.split(':');
+        if (parts.length >= 5) {
+          const commentParts = parts[4].split(',');
+          const limit = commentParts[0] || '1';
+          const password = commentParts[1] || 'No password';
+          
+          const serverIp = req.headers.host?.split(':')[0] || 'your-server-ip';
+          const expDateString = new Date(expTimestamp * 1000).toLocaleString();
+          
+          // Calculate remaining time nicely for display
+          let durationString = 'Active Plan';
+          const diff = expTimestamp - Math.floor(Date.now() / 1000);
+          if (diff > 0) {
+            durationString = `${Math.ceil(diff / 86400)} Days`;
+          }
+
+          sendClientWelcomeEmail(username, email, password, durationString, limit, expDateString, serverIp).catch(console.error);
+        }
+      }
+    }
 
     res.json({ message: 'User details updated successfully!', username, email, phone });
   } catch (err) {
