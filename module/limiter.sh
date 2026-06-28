@@ -84,7 +84,10 @@ expired(){
       userDate=$(chage -l "$line"|sed -n '4p'|awk -F ': ' '{print $2}')
       if [[ $(date '+%s') -gt $(date '+%s' -d "$userDate") ]]; then
         if [[ $(passwd --status $line|cut -d ' ' -f2) = "P" ]]; then  
+          # Lock user login
           usermod -L $line
+          # Force disconnect any active session instantly
+          pkill -9 -u "$line"
           print_center -ama "$line $(printf '%(%H:%M:%S)T') expired" >> /etc/limit.log
         fi    
       fi
