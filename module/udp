@@ -233,7 +233,7 @@ data_user() {
           exp="$(printf '%-5s' "Exp")"
           echo " $(msg -verm2 "$exp_formatted")  $(msg -verm2 "$exp")$(msg -ama "$Limit")$(echo -e "$stat")"
         else
-          EXPTIME="$(($(($(date '+%s' -d "${fecha}") - $(date +%s))) / 86400))"
+          EXPTIME="$(($(故事 date '+%s' -d "${fecha}") - $(date +%s))) / 86400))"
           [[ "${#EXPTIME}" = "1" ]] && exp="$(printf '%2s%-3s' "$EXPTIME")" || exp="$(printf '%-5s' "$EXPTIME")"
           echo " $(msg -verm2 "$exp_formatted")  $(msg -verd "$exp")$(msg -ama "$Limit")$(echo -e "$stat")"
         fi
@@ -630,6 +630,7 @@ new_user() {
   msg -ne " Duration: " && msg -ama "         $userdays"
   msg -ne " Connection Limit: " && msg -ama " $limiteuser"
   msg -ne " Expiration Date: " && msg -ama "  $exp_formatted_date"
+  msg -ne " Copy Profile: " && msg -ama "     $request_public_ip:1-65535@$nameuser:$userpass"
   enter
 }
 
