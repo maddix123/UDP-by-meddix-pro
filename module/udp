@@ -531,7 +531,7 @@ remove_user() {
     msg -bar
     sleep 3
     return 1
-  }
+  fi
 
   print_center -ama "Selected User: $user_del"
   rm_user "$user_del"
