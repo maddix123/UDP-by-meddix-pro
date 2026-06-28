@@ -42,6 +42,21 @@ const transporter = nodemailer.createTransport({
   }
 });
 
+// Helper to get or initialize web portal settings
+const SETTINGS_FILE = '/etc/UDPCustom/web-portal-settings.json';
+const DEFAULT_WELCOME_MSG = "Welcome to Meddix Pro VPN Service! Your high-speed account has been successfully activated. Enjoy unlimited browsing with our secure UDP protocol tunneling.";
+
+function getSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'));
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return { welcomeMessage: DEFAULT_WELCOME_MSG };
+}
+
 // Helper to compile and send the expiration report email to Admin and reminders to Users
 async function sendExpiryReport(isInstantDeploy = false) {
   try {
@@ -246,6 +261,59 @@ async function sendClientReminderEmail(username, email, daysLeft, expDateString)
   }
 }
 
+// 🔥 INSTANT WELCOME EMAIL GENERATOR ON ACCOUNT CREATION
+async function sendClientWelcomeEmail(username, email, password, duration, limit, expDateString, serverIp) {
+  try {
+    const configSettings = getSettings();
+    const welcomeText = configSettings.welcomeMessage || DEFAULT_WELCOME_MSG;
+    const profileLine = `${serverIp}:1-65535@${username}:${password}`;
+
+    const welcomeHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
+        <h2 style="text-align: center; color: #4f46e5; border-bottom: 2px solid #24314f; padding-bottom: 12px;">🎉 Welcome to Meddix Pro VPN Service</h2>
+        <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6; margin-top: 16px;">Hello <strong>${username}</strong>,</p>
+        <p style="font-size: 14px; line-height: 1.6; color: #d1d5db; margin-top: 10px;">
+          ${welcomeText}
+        </p>
+        
+        <h3 style="color: #10b981; margin-top: 24px; border-bottom: 1px solid #24314f; padding-bottom: 6px; font-size: 14px; text-transform: uppercase;">📋 Your Tunnel Credentials</h3>
+        <div style="background: #151d30; border-radius: 8px; padding: 16px; margin: 12px 0; border: 1px solid #24314f; font-family: monospace; font-size: 13px;">
+          <div style="margin-bottom: 6px;">👤 Username: <strong>${username}</strong></div>
+          <div style="margin-bottom: 6px;">🔑 Password: <strong>${password}</strong></div>
+          <div style="margin-bottom: 6px;">⏱️ Duration: <strong>${duration}</strong></div>
+          <div style="margin-bottom: 6px;">📅 Expiration: <strong>${expDateString}</strong></div>
+          <div>💻 Limit: <strong>${limit} concurrent connections</strong></div>
+        </div>
+
+        <h3 style="color: #4f46e5; margin-top: 24px; border-bottom: 1px solid #24314f; padding-bottom: 6px; font-size: 14px; text-transform: uppercase;">🚀 HTTP Custom Profile</h3>
+        <p style="font-size: 13px; color: #9ca3af; margin-bottom: 8px;">Copy the connection profile line below and paste it directly into your HTTP Custom application:</p>
+        <div style="background: #0b0f19; border: 1px solid #24314f; border-radius: 8px; padding: 12px 14px; font-family: monospace; font-size: 13px; color: #4f46e5; word-break: break-all;">
+          ${profileLine}
+        </div>
+        
+        <p style="font-size: 13px; line-height: 1.5; color: #9ca3af; margin-top: 20px;">
+          If you have any questions or require custom assistance, please contact our support desk at <a href="mailto:ahmedmutumba@gmail.com" style="color: #4f46e5; text-decoration: none;">ahmedmutumba@gmail.com</a>.
+        </p>
+        
+        <div style="text-align: center; margin-top: 30px; font-size: 11px; color: #9ca3af; border-top: 1px dashed #24314f; padding-top: 12px;">
+          Enjoy secure, unthrottled internet with Meddix Pro!
+        </div>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: '"Meddix Pro VPN" <info@mods99.com>',
+      to: email,
+      subject: `🚀 Welcome to Meddix Pro VPN! Your UDP Account Details`,
+      html: welcomeHtml
+    });
+
+    console.log(`✉️ Welcome email successfully sent to new client: ${username} (${email})`);
+  } catch (err) {
+    console.error(`Failed to send welcome email to client ${username}:`, err.message);
+  }
+}
+
 // Active daily scheduler check running every minute
 let lastSentDay = null;
 setInterval(() => {
@@ -263,6 +331,27 @@ setInterval(() => {
 }, 60 * 1000); // Check every minute
 
 // ==================== API ENDPOINTS ====================
+
+// GET /api/settings - Fetch customizable portal settings
+app.get('/api/settings', (req, res) => {
+  res.json(getSettings());
+});
+
+// POST /api/settings - Update customizable portal settings
+app.post('/api/settings', (req, res) => {
+  try {
+    const { welcomeMessage } = req.body;
+    if (!welcomeMessage) return res.status(400).json({ error: 'Welcome message cannot be empty' });
+
+    const configData = { welcomeMessage };
+    fs.mkdirSync('/etc/UDPCustom', { recursive: true });
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(configData, null, 2));
+
+    res.json({ message: 'Settings saved successfully!', settings: configData });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save settings: ' + err.message });
+  }
+});
 
 // GET /api/users - List all UDP users
 app.get('/api/users', async (req, res) => {
@@ -397,6 +486,13 @@ app.post('/api/users', async (req, res) => {
 
     await execPromise(`useradd -M -s /bin/false -e "${validDate}" -K PASS_MAX_DAYS=${daysRounded} -c "${limit},${password}" "${username}"`);
     await execPromise(`echo "${username}:${password}" | chpasswd`);
+
+    // 🔥 SEND WELCOME EMAIL IMMEDIATELY ON CREATION IF EMAIL IS SUPPLIED!
+    if (email && email.trim() !== '') {
+      const serverIp = req.headers.host?.split(':')[0] || 'your-server-ip';
+      const expDateString = new Date(expTimestamp * 1000).toLocaleString();
+      sendClientWelcomeEmail(username, email, password, duration, limit, expDateString, serverIp).catch(console.error);
+    }
 
     res.status(201).json({ message: 'User created successfully', username });
   } catch (err) {
