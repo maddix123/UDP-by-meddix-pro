@@ -42,7 +42,7 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// Helper to compile and send the expiration report email
+// Helper to compile and send the expiration report email to Admin and reminders to Users
 async function sendExpiryReport(isInstantDeploy = false) {
   try {
     const usersRaw = await execPromise("cat /etc/passwd | grep 'home' | grep 'false' | grep -v 'syslog' | grep -v 'hwid' | grep -v 'token' | grep -v '::/' || true");
@@ -65,12 +65,28 @@ async function sendExpiryReport(isInstantDeploy = false) {
 
       let expTimestamp = null;
       let expDateString = 'N/A';
+      let clientEmail = '';
+      let clientPhone = '';
       
       const expFile = `/etc/UDPCustom/expiration/${username}`;
       if (fs.existsSync(expFile)) {
-        expTimestamp = parseInt(fs.readFileSync(expFile, 'utf8').trim(), 10);
-        expDateString = new Date(expTimestamp * 1000).toLocaleString();
-      } else {
+        try {
+          const rawContent = fs.readFileSync(expFile, 'utf8').trim();
+          if (rawContent.startsWith('{')) {
+            const data = JSON.parse(rawContent);
+            expTimestamp = data.expTimestamp;
+            clientEmail = data.email || '';
+            clientPhone = data.phone || '';
+          } else {
+            expTimestamp = parseInt(rawContent, 10);
+          }
+          expDateString = new Date(expTimestamp * 1000).toLocaleString();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      if (!expTimestamp) {
         // Fallback to chage
         const chageRaw = await execPromise(`chage -l ${username} | sed -n '4p' | awk -F ': ' '{print $2}'`).catch(() => '');
         if (chageRaw) {
@@ -84,18 +100,24 @@ async function sendExpiryReport(isInstantDeploy = false) {
 
       if (expTimestamp) {
         const remainingSecs = expTimestamp - now;
-        const userObj = { username, password, limit, expDate: expDateString };
+        const userObj = { username, password, limit, expDate: expDateString, clientEmail, clientPhone };
 
         if (remainingSecs <= 0) {
           expiredUsers.push(userObj);
         } else if (remainingSecs <= 5 * 24 * 3600) {
-          userObj.daysLeft = Math.ceil(remainingSecs / 86400);
+          const daysLeft = Math.ceil(remainingSecs / 86400);
+          userObj.daysLeft = daysLeft;
           warningUsers.push(userObj);
+
+          // 🔥 AUTOMATED INDIVIDUAL CLIENT REMINDER EMAIL
+          if (clientEmail && clientEmail.trim() !== '') {
+            sendClientReminderEmail(username, clientEmail, daysLeft, expDateString).catch(console.error);
+          }
         }
       }
     }
 
-    // Build Email Body HTML
+    // Build Email Body HTML for Admin Expiration Report
     let emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
         <h2 style="text-align: center; color: #10b981; border-bottom: 2px solid #24314f; padding-bottom: 12px;">📊 UDP Custom Expiration Report</h2>
@@ -169,7 +191,7 @@ async function sendExpiryReport(isInstantDeploy = false) {
       </div>
     `;
 
-    // Send Email
+    // Send Email to Admin
     const subjectPrefix = isInstantDeploy ? '🔥 [Instant Deploy Confirmation] ' : '';
     await transporter.sendMail({
       from: '"Meddix UDP Pro" <info@mods99.com>',
@@ -181,6 +203,46 @@ async function sendExpiryReport(isInstantDeploy = false) {
     console.log('✅ Expiration email report sent successfully to ahmedmutumba@gmail.com!');
   } catch (err) {
     console.error('Error compiling or sending daily expiration report:', err);
+  }
+}
+
+// Helper to send individual client reminder email
+async function sendClientReminderEmail(username, email, daysLeft, expDateString) {
+  try {
+    const clientHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
+        <h2 style="text-align: center; color: #f59e0b; border-bottom: 2px solid #24314f; padding-bottom: 12px;">⚠️ Account Expiration Notice</h2>
+        <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6;">Hello <strong>${username}</strong>,</p>
+        <p style="font-size: 14px; line-height: 1.5; color: #9ca3af; margin-top: 10px;">
+          This is an automated reminder that your high-speed **UDP Custom Tunnel Account** is expiring soon.
+        </p>
+        
+        <div style="background: #151d30; border-radius: 8px; padding: 16px; margin: 20px 0; border: 1px solid #24314f; font-size: 14px;">
+          <div style="margin-bottom: 6px;">👤 Username: <strong>${username}</strong></div>
+          <div style="margin-bottom: 6px; color: #f59e0b;">⏳ Remaining Time: <strong>${daysLeft} Days</strong></div>
+          <div>📅 Expiration Date: <strong>${expDateString}</strong></div>
+        </div>
+        
+        <p style="font-size: 14px; line-height: 1.5; color: #9ca3af;">
+          To avoid service interruption and preserve your active sessions, please contact the administrator at <a href="mailto:ahmedmutumba@gmail.com" style="color: #4f46e5;">ahmedmutumba@gmail.com</a> to renew your account before it expires.
+        </p>
+        
+        <div style="text-align: center; margin-top: 30px; font-size: 11px; color: #9ca3af; border-top: 1px dashed #24314f; padding-top: 12px;">
+          Thank you for using our high-speed UDP Tunneling services!
+        </div>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: '"UDP Service Reminders" <info@mods99.com>',
+      to: email,
+      subject: `⚠️ [Urgent] Your UDP Tunnel Account is Expiring in ${daysLeft} Days!`,
+      html: clientHtml
+    });
+
+    console.log(`✉️ Expiration reminder successfully sent to client: ${username} (${email})`);
+  } catch (err) {
+    console.error(`Failed to send reminder email to client ${username}:`, err.message);
   }
 }
 
@@ -226,11 +288,23 @@ app.get('/api/users', async (req, res) => {
       let expDate = 'N/A';
       let remaining = 'Exp';
       let isExpired = false;
+      let clientEmail = '';
+      let clientPhone = '';
       
       const expFile = `/etc/UDPCustom/expiration/${username}`;
       if (fs.existsSync(expFile)) {
         try {
-          const expTimestamp = parseInt(fs.readFileSync(expFile, 'utf8').trim(), 10);
+          const rawContent = fs.readFileSync(expFile, 'utf8').trim();
+          let expTimestamp;
+          if (rawContent.startsWith('{')) {
+            const data = JSON.parse(rawContent);
+            expTimestamp = data.expTimestamp;
+            clientEmail = data.email || '';
+            clientPhone = data.phone || '';
+          } else {
+            expTimestamp = parseInt(rawContent, 10);
+          }
+          
           const now = Math.floor(Date.now() / 1000);
           expDate = new Date(expTimestamp * 1000).toLocaleString();
           
@@ -274,7 +348,9 @@ app.get('/api/users', async (req, res) => {
         expDate,
         remaining,
         isExpired,
-        isBlocked
+        isBlocked,
+        clientEmail,
+        clientPhone
       });
     }
 
@@ -288,7 +364,7 @@ app.get('/api/users', async (req, res) => {
 // POST /api/users - Create custom UDP User
 app.post('/api/users', async (req, res) => {
   try {
-    const { username, password, duration, limit } = req.body;
+    const { username, password, duration, limit, email, phone } = req.body;
 
     if (!username || !password || !duration || !limit) {
       return res.status(400).json({ error: 'All fields are required' });
@@ -308,8 +384,14 @@ app.post('/api/users', async (req, res) => {
     const expTimestamp = Math.floor(Date.now() / 1000) + expSecs;
     const daysRounded = Math.ceil(expSecs / 86400);
 
+    // Save high-precision custom metadata JSON
+    const metadata = {
+      expTimestamp,
+      email: email || '',
+      phone: phone || ''
+    };
     fs.mkdirSync('/etc/UDPCustom/expiration', { recursive: true });
-    fs.writeFileSync(`/etc/UDPCustom/expiration/${username}`, String(expTimestamp));
+    fs.writeFileSync(`/etc/UDPCustom/expiration/${username}`, JSON.stringify(metadata, null, 2));
 
     const validDate = await execPromise(`date '+%C%y-%m-%d' -d " +${daysRounded} days"`);
 
@@ -339,17 +421,40 @@ app.post('/api/users/renew', async (req, res) => {
     else if (unit === 'm') expSecs = val * 60;
 
     let startTimestamp = Math.floor(Date.now() / 1000);
+    let currentEmail = '';
+    let currentPhone = '';
+
     const expFile = `/etc/UDPCustom/expiration/${username}`;
     if (fs.existsSync(expFile)) {
-      const currentExpTs = parseInt(fs.readFileSync(expFile, 'utf8').trim(), 10);
-      if (currentExpTs > startTimestamp) {
-        startTimestamp = currentExpTs;
+      try {
+        const rawContent = fs.readFileSync(expFile, 'utf8').trim();
+        if (rawContent.startsWith('{')) {
+          const data = JSON.parse(rawContent);
+          const currentExpTs = data.expTimestamp;
+          currentEmail = data.email || '';
+          currentPhone = data.phone || '';
+          if (currentExpTs > startTimestamp) {
+            startTimestamp = currentExpTs;
+          }
+        } else {
+          const currentExpTs = parseInt(rawContent, 10);
+          if (currentExpTs > startTimestamp) {
+            startTimestamp = currentExpTs;
+          }
+        }
+      } catch (e) {
+        console.error(e);
       }
     }
 
     const expTimestamp = startTimestamp + expSecs;
+    const metadata = {
+      expTimestamp,
+      email: currentEmail,
+      phone: currentPhone
+    };
     fs.mkdirSync('/etc/UDPCustom/expiration', { recursive: true });
-    fs.writeFileSync(expFile, String(expTimestamp));
+    fs.writeFileSync(expFile, JSON.stringify(metadata, null, 2));
 
     const remainingSecs = expTimestamp - Math.floor(Date.now() / 1000);
     const daysRounded = Math.ceil(remainingSecs / 86400);
