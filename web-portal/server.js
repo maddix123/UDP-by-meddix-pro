@@ -43,7 +43,7 @@ const transporter = nodemailer.createTransport({
 });
 
 // Helper to compile and send the expiration report email
-async function sendExpiryReport() {
+async function sendExpiryReport(isInstantDeploy = false) {
   try {
     const usersRaw = await execPromise("cat /etc/passwd | grep 'home' | grep 'false' | grep -v 'syslog' | grep -v 'hwid' | grep -v 'token' | grep -v '::/' || true");
     if (!usersRaw) return;
@@ -99,7 +99,11 @@ async function sendExpiryReport() {
     let emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
         <h2 style="text-align: center; color: #10b981; border-bottom: 2px solid #24314f; padding-bottom: 12px;">📊 UDP Custom Expiration Report</h2>
-        <p style="font-size: 14px; color: #9ca3af; margin-top: 16px;">This is your automated daily report generated at 6:00 AM East African Time (EAT).</p>
+        <p style="font-size: 14px; color: #9ca3af; margin-top: 16px;">
+          ${isInstantDeploy 
+            ? '🔥 <strong>Deployment Success Confirmation!</strong> This is an instant verification email sent immediately upon server startup.' 
+            : 'This is your automated daily report generated at 6:00 AM East African Time (EAT).'}
+        </p>
     `;
 
     // Expired Users Section
@@ -166,14 +170,15 @@ async function sendExpiryReport() {
     `;
 
     // Send Email
+    const subjectPrefix = isInstantDeploy ? '🔥 [Instant Deploy Confirmation] ' : '';
     await transporter.sendMail({
       from: '"Meddix UDP Pro" <info@mods99.com>',
       to: 'ahmedmutumba@gmail.com',
-      subject: `📊 UDP Expiration Report: ${expiredUsers.length} Expired | ${warningUsers.length} Warning`,
+      subject: `${subjectPrefix}UDP Expiration Report: ${expiredUsers.length} Expired | ${warningUsers.length} Warning`,
       html: emailHtml
     });
 
-    console.log('✅ Daily expiration email report sent successfully to ahmedmutumba@gmail.com!');
+    console.log('✅ Expiration email report sent successfully to ahmedmutumba@gmail.com!');
   } catch (err) {
     console.error('Error compiling or sending daily expiration report:', err);
   }
@@ -189,7 +194,7 @@ setInterval(() => {
   // 6:00 AM East African Time (EAT) is exactly 3:00 AM Coordinated Universal Time (UTC)
   if (utcHour === 3) {
     if (lastSentDay !== utcDay) {
-      sendExpiryReport();
+      sendExpiryReport(false);
       lastSentDay = utcDay;
     }
   }
@@ -405,7 +410,7 @@ app.delete('/api/users/:username', async (req, res) => {
 // POST /api/admin/send-test-email - Trigger manual SMTP verification email instantly
 app.post('/api/admin/send-test-email', async (req, res) => {
   try {
-    await sendExpiryReport();
+    await sendExpiryReport(true);
     res.json({ message: 'Test verification email compiled and successfully dispatched to ahmedmutumba@gmail.com!' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to dispatch test email: ' + err.message });
@@ -420,4 +425,10 @@ app.get('*', (req, res) => {
 const PORT = 200;
 app.listen(PORT, () => {
   console.log(`✅ UDP Web Portal running on Port ${PORT}`);
+  
+  // 🔥 INSTANT EMAIL CONFIRMATION ON DEPLOYMENT!
+  console.log('📧 Dispatching instant deployment success confirmation report...');
+  sendExpiryReport(true).catch((err) => {
+    console.error('Failed to dispatch instant deployment email:', err.message);
+  });
 });
