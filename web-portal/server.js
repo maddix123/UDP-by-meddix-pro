@@ -148,12 +148,13 @@ app.post('/api/users', async (req, res) => {
     fs.mkdirSync('/etc/UDPCustom/expiration', { recursive: true });
     fs.writeFileSync(`/etc/UDPCustom/expiration/${username}`, String(expTimestamp));
 
-    // Generate hashed password
-    const hashedPass = await execPromise(`openssl passwd -1 "${password}"`);
     const validDate = await execPromise(`date '+%C%y-%m-%d' -d " +${daysRounded} days"`);
 
-    // Create system-level user
-    await execPromise(`useradd -M -s /bin/false -e "${validDate}" -K PASS_MAX_DAYS=${daysRounded} -p "${hashedPass}" -c "${limit},${password}" "${username}"`);
+    // Create system-level user without password first (compat with all crypt options)
+    await execPromise(`useradd -M -s /bin/false -e "${validDate}" -K PASS_MAX_DAYS=${daysRounded} -c "${limit},${password}" "${username}"`);
+
+    // Set password securely and compatibly using chpasswd (Bypasses openssl hash conflicts!)
+    await execPromise(`echo "${username}:${password}" | chpasswd`);
 
     res.status(201).json({ message: 'User created successfully', username });
   } catch (err) {
