@@ -147,7 +147,7 @@ limiter() {
 
 data_user() {
   cat_users=$(cat "/etc/passwd" | grep 'home' | grep 'false' | grep -v 'syslog' | grep -v '::/' | grep -v 'hwid\|token')
-  [[ -z "$(echo "${cat_users}" | head -1)" ]] && print_center -verm2 "${a96:-NO REGISTERED SSH USERS}" && return 1
+  [[ -z "$(echo "${cat_users}" | head -1)" ]] && print_center -verm2 "NO REGISTERED SSH USERS" && return 1
   dat_us=$(printf '%-13s%-14s%-10s%-4s%-6s%s' "User" "Pass" "Date" "Days" 'Lmt' 'Stat')
   msg -azu "  $dat_us"
   msg -bar
@@ -233,7 +233,9 @@ data_user() {
           exp="$(printf '%-5s' "Exp")"
           echo " $(msg -verm2 "$exp_formatted")  $(msg -verm2 "$exp")$(msg -ama "$Limit")$(echo -e "$stat")"
         else
-          EXPTIME="$(($(故事 date '+%s' -d "${fecha}") - $(date +%s))) / 86400))"
+          local exp_timestamp_sec=$(date '+%s' -d "${fecha}")
+          local now_timestamp_sec=$(date +%s)
+          local EXPTIME=$(( (exp_timestamp_sec - now_timestamp_sec) / 86400 ))
           [[ "${#EXPTIME}" = "1" ]] && exp="$(printf '%2s%-3s' "$EXPTIME")" || exp="$(printf '%-5s' "$EXPTIME")"
           echo " $(msg -verm2 "$exp_formatted")  $(msg -verd "$exp")$(msg -ama "$Limit")$(echo -e "$stat")"
         fi
@@ -335,11 +337,23 @@ renew_user_fun() {
     exp_secs=$(( val * 60 ))
   fi
   
-  local exp_timestamp=$(( $(date +%s) + exp_secs ))
-  mkdir -p /etc/UDPCustom/expiration
-  echo "$exp_timestamp" > "/etc/UDPCustom/expiration/$1"
+  # Core Fix: If the user ALREADY has a custom expiration file, we extend/renew starting FROM their future expiration timestamp
+  # if their current timestamp is still in the future! Otherwise, we start from $(date +%s) (the current time).
+  local exp_file="/etc/UDPCustom/expiration/$1"
+  local start_timestamp=$(date +%s)
   
-  local days_rounded=$(( (exp_secs + 86399) / 86400 ))
+  if [[ -f "$exp_file" ]]; then
+    local current_exp_ts=$(cat "$exp_file" | tr -d '\r\n')
+    if [[ "$current_exp_ts" -gt "$start_timestamp" ]]; then
+      start_timestamp="$current_exp_ts"
+    fi
+  fi
+  
+  local exp_timestamp=$(( start_timestamp + exp_secs ))
+  mkdir -p /etc/UDPCustom/expiration
+  echo "$exp_timestamp" > "$exp_file"
+  
+  local days_rounded=$(( (exp_timestamp - $(date +%s) + 86399) / 86400 ))
   valid=$(date '+%C%y-%m-%d' -d " +$days_rounded days")
   if chage -E $valid $1; then
     print_center -ama "Renewed User Successfully"
@@ -690,7 +704,7 @@ uninstall_udp_manager() {
   # rm -rf /etc/systemd/system/autostart.service
   rm -rf /usr/bin/udp-custom
   rm -rf /root/udp/udp-custom
-  # rm -rf /root/udp/udp-request
+  # rm -rf /usr/bin/udp-request
   # rm -rf /usr/bin/udp-request
   rm -rf /root/udp/config.json
   rm -rf /etc/UDPCustom/udp-custom
@@ -703,7 +717,7 @@ uninstall_udp_manager() {
   rm -rf /etc/systemd/system/udpgw.service
   systemctl stop udpgw &>/dev/null
   del 1
-  print_center -ama "${a34:-Uninstallation completed!}"
+  print_center -ama "Uninstallation completed!"
   rm -rf /usr/bin/udp
   enter
   exit
@@ -713,14 +727,14 @@ reset_udp_request() {
   if [[ $(systemctl is-active udp-request) = 'active' ]]; then
     systemctl stop udp-request &>/dev/null
     systemctl disable udp-request &>/dev/null
-    print_center -ama "${a35:-UDP-Request reset done!}"
+    print_center -ama "UDP-Request reset done!"
   else
     systemctl start udp-request &>/dev/null
     if [[ $(systemctl is-active udp-request) = 'active' ]]; then
       systemctl enable udp-request &>/dev/null
-      print_center -verd "${a36:-UDP-Request started!}"
+      print_center -verd "UDP-Request started!"
     else
-      print_center -verm2 "${a37:-failed to start udp-request.service!}"
+      print_center -verm2 "failed to start udp-request.service!"
     fi
   fi
   enter
@@ -730,49 +744,49 @@ reset_udp_custom() {
   if [[ $(systemctl is-active udp-custom) = 'active' ]]; then
     systemctl stop udp-custom &>/dev/null
     systemctl disable udp-custom &>/dev/null
-    print_center -ama "${a35:-UDP-Custom reset done!}"
+    print_center -ama "UDP-Custom reset done!"
   else
     systemctl start udp-custom &>/dev/null
     if [[ $(systemctl is-active udp-custom) = 'active' ]]; then
       systemctl enable udp-custom &>/dev/null
-      print_center -verd "${a36:-UDP-Custom started!}"
+      print_center -verd "UDP-Custom started!"
     else
-      print_center -verm2 "${a37:-failed to start udp-custom.service!}"
+      print_center -verm2 "failed to start udp-custom.service!"
     fi
   fi
   enter
 }
 
 exclude() {
-  title "${a20:-Exclude UDP ports}"
-  print_center -ama "${a21:-UDP-Request covers full range of ports,}"
-  print_center -ama "${a22:-However, you can exclude UDP ports.}"
+  title "Exclude UDP ports"
+  print_center -ama "UDP-Request covers full range of ports,"
+  print_center -ama "However, you can exclude UDP ports."
   msg -bar3
-  print_center -ama "${a23:-Examples of ports you can exclude:}:"
+  print_center -ama "Examples of ports you can exclude::"
   print_center -ama "dnstt (slowdns) udp 53 5300"
   print_center -ama "wireguard udp 51820"
   print_center -ama "openvpn udp 1194"
   msg -bar
-  print_center -verd "${a24:-enter the ports separated by spaces}"
-  print_center -verd "${a25:-Example}: 53 5300 51820 1194"
+  print_center -verd "enter the ports separated by spaces"
+  print_center -verd "Example: 53 5300 51820 1194"
   msg -bar3
-  in_opcion_down "${a26:-type ports or hit enter to skip}"
+  in_opcion_down "type ports or hit enter to skip"
   del 2
   tmport=($opcion)
   for ((i = 0; i < ${#tmport[@]}; i++)); do
     num=$((${tmport[$i]}))
     if [[ $num -gt 0 ]]; then
-      echo "$(msg -ama " ${a27:-port to exclude} >") $(msg -azu "$num") $(msg -verd "OK")"
+      echo "$(msg -ama " port to exclude >") $(msg -azu "$num") $(msg -verd "OK")"
       Port+=" $num"
     else
-      msg -verm2 " ${a28:-not a port} > ${tmport[$i]}?"
+      msg -verm2 " not a port > ${tmport[$i]}?"
       continue
     fi
   done
 
   if [[ -z $Port ]]; then
     unset Port
-    print_center -ama "${a29:-no ports excluded}"
+    print_center -ama "no ports excluded"
   else
     Port=" -exclude=$(echo "$Port" | sed "s/ /,/g" | sed 's/,//')"
   fi
@@ -780,34 +794,34 @@ exclude() {
 }
 
 add_exclude() {
-  title "${a20:-Exclude UDP ports}"
-  print_center -ama "${a21:-UDP-Request covers full range of ports,}"
-  print_center -ama "${a22:-However, you can exclude UDP ports.}"
+  title "Exclude UDP ports"
+  print_center -ama "UDP-Request covers full range of ports,"
+  print_center -ama "However, you can exclude UDP ports."
   msg -bar3
-  print_center -ama "${a23:-Examples of ports you can exclude:}:"
+  print_center -ama "Examples of ports you can exclude::"
   print_center -ama "dnstt (slowdns) udp 53 5300"
   print_center -ama "wireguard udp 51820"
   print_center -ama "openvpn udp 1194"
   msg -bar
-  print_center -verd "${a24:-enter the ports separated by spaces}"
-  print_center -verd "${a25:-Example}: 53 5300 51820 1194"
-  in_opcion_down "${a26:-type ports or hit enter to skip}"
+  print_center -verd "enter the ports separated by spaces"
+  print_center -verd "Example: 53 5300 51820 1194"
+  in_opcion_down "type ports or hit enter to skip"
   del 4
   tmport=($opcion)
   unset Port
   for ((i = 0; i < ${#tmport[@]}; i++)); do
     num=$((${tmport[$i]}))
     if [[ $num -gt 0 ]]; then
-      echo "$(msg -ama " ${a27:-port to exclude} >") $(msg -azu "$num") $(msg -verd "OK")"
+      echo "$(msg -ama " port to exclude >") $(msg -azu "$num") $(msg -verd "OK")"
       Port+=" $num"
     else
-      msg -verm2 " ${a28:-not a port} > ${tmport[$i]}?"
+      msg -verm2 " not a port > ${tmport[$i]}?"
       continue
     fi
   done
   if [[ $Port = "" ]]; then
     unset Port
-    print_center -ama "${a29:-no ports excluded}"
+    print_center -ama "no ports excluded"
   else
     exclude=$(cat /etc/systemd/system/udp-request.service | grep 'exclude')
     if systemctl is-active udp-request &>/dev/null; then
@@ -832,7 +846,7 @@ add_exclude() {
 }
 
 quit_exclude() {
-  title "${a88:-REMOVE EXCLUSION PORT}"
+  title "REMOVE EXCLUSION PORT"
   exclude=$(cat /etc/systemd/system/udp-request.service | grep 'exclude' | awk '{print $4}')
   ports=($port)
   for ((i = 0; i < ${#ports[@]}; i++)); do
