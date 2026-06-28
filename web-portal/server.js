@@ -57,6 +57,134 @@ function getSettings() {
   return { welcomeMessage: DEFAULT_WELCOME_MSG };
 }
 
+// ==================== BANDWIDTH DATA ACCOUNTING ENGINE ====================
+
+// Fetch precise real-time iptables traffic counters for a specific user
+async function getUserBandwidth(username) {
+  try {
+    const uid = await execPromise(`id -u ${username}`).catch(() => null);
+    if (!uid) return { upload: 0, download: 0, total: 0 };
+
+    // Downlink (Data sent from server to client - OUTPUT rules)
+    const iptablesOutput = await execPromise(`iptables -L OUTPUT -v -n -x | grep "owner UID match ${uid}" || true`);
+    let downloadBytes = 0;
+    if (iptablesOutput) {
+      const parts = iptablesOutput.trim().split(/\s+/);
+      downloadBytes = parseInt(parts[1], 10) || 0;
+    }
+
+    // Uplink (Data received by server from client - INPUT rules)
+    const iptablesInput = await execPromise(`iptables -L INPUT -v -n -x | grep "owner UID match ${uid}" || true`);
+    let uploadBytes = 0;
+    if (iptablesInput) {
+      const parts = iptablesInput.trim().split(/\s+/);
+      uploadBytes = parseInt(parts[1], 10) || 0;
+    }
+
+    return {
+      upload: uploadBytes,
+      download: downloadBytes,
+      total: uploadBytes + downloadBytes
+    };
+  } catch (e) {
+    console.error('Bandwidth calculation error:', e);
+    return { upload: 0, download: 0, total: 0 };
+  }
+}
+
+// Background scheduler running every 5 minutes to audit and reset daily data usage
+async function auditDailyBandwidth() {
+  try {
+    const usersRaw = await execPromise("cat /etc/passwd | grep 'home' | grep 'false' | grep -v 'syslog' | grep -v 'hwid' | grep -v 'token' | grep -v '::/' || true");
+    if (!usersRaw) return;
+
+    const lines = usersRaw.split('\n');
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    for (const line of lines) {
+      const username = line.split(':')[0];
+      const expFile = `/etc/UDPCustom/expiration/${username}`;
+
+      if (fs.existsSync(expFile)) {
+        try {
+          const raw = fs.readFileSync(expFile, 'utf8').trim();
+          if (raw.startsWith('{')) {
+            const data = JSON.parse(raw);
+            const bandwidth = await getUserBandwidth(username);
+
+            // Handle daily reset
+            if (data.lastResetDate !== todayStr) {
+              data.dailyBytes = 0;
+              data.sent2GBWarningToday = false;
+              data.lastResetDate = todayStr;
+            } else {
+              data.dailyBytes = bandwidth.total;
+            }
+
+            // Check if user has exceeded the 2GB daily limit threshold (2 * 1024 * 1024 * 1024 bytes)
+            const LIMIT_2GB = 2147483648;
+            if (data.dailyBytes >= LIMIT_2GB && !data.sent2GBWarningToday) {
+              if (data.email && data.email.trim() !== '') {
+                await sendClient2GBLimitWarning(username, data.email, data.dailyBytes);
+                data.sent2GBWarningToday = true;
+              }
+            }
+
+            fs.writeFileSync(expFile, JSON.stringify(data, null, 2));
+          }
+        } catch (e) {
+          console.error(`Failed to audit bandwidth for user ${username}:`, e);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Bandwidth auditor background error:', err);
+  }
+}
+
+// Run audit check every 5 minutes
+setInterval(auditDailyBandwidth, 5 * 60 * 1000);
+
+// Helper to send 2GB Daily Limit Exceeded Warning Email
+async function sendClient2GBLimitWarning(username, email, bytesUsed) {
+  try {
+    const usedGB = (bytesUsed / (1024 * 1024 * 1024)).toFixed(2);
+    const alertHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
+        <h2 style="text-align: center; color: #ef4444; border-bottom: 2px solid #24314f; padding-bottom: 12px;">⚠️ Daily Data Limit Alert</h2>
+        <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6; margin-top: 16px;">Hello <strong>${username}</strong>,</p>
+        <p style="font-size: 14px; line-height: 1.6; color: #9ca3af; margin-top: 10px;">
+          This is an automated notification from **Meddix Pro VPN Service** that you have reached or exceeded your daily bandwidth threshold.
+        </p>
+        
+        <div style="background: rgba(239, 68, 68, 0.1); border-radius: 8px; padding: 16px; margin: 20px 0; border: 1px solid #ef4444; font-size: 14px; text-align: center;">
+          <div style="color: #ef4444; font-weight: bold; font-size: 16px; margin-bottom: 6px;">🚫 2GB DAILY DATA LIMIT REACHED</div>
+          <div style="color: #f3f4f6;">Total Used Today: <strong>${usedGB} GB</strong></div>
+        </div>
+        
+        <p style="font-size: 13px; line-height: 1.5; color: #9ca3af;">
+          To maintain stable speeds for all connected tunnel endpoints on the node, your connection might be temporarily optimized or throttled until the **daily limit resets tonight at 12:00 AM**.
+        </p>
+        
+        <div style="text-align: center; margin-top: 30px; font-size: 11px; color: #9ca3af; border-top: 1px dashed #24314f; padding-top: 12px;">
+          Meddix Pro VPN Service — High-Speed Secure Sockets Tunneling
+        </div>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: '"Meddix Pro Data Alerts" <info@mods99.com>',
+      to: email,
+      subject: `⚠️ [Warning] You have reached your 2GB Daily Data Limit!`,
+      html: alertHtml
+    });
+
+    console.log(`✉️ 2GB Limit Warning successfully emailed to client: ${username} (${email})`);
+  } catch (err) {
+    console.error(`Failed to send 2GB warning to ${username}:`, err.message);
+  }
+}
+
 // Helper to compile and send the expiration report email to Admin and reminders to Users
 async function sendExpiryReport(isInstantDeploy = false) {
   try {
@@ -131,6 +259,9 @@ async function sendExpiryReport(isInstantDeploy = false) {
         }
       }
     }
+
+    // Zero out all iptables counters daily at 6:00 AM EAT to start fresh
+    await execPromise('iptables -Z').catch(console.error);
 
     // Build Email Body HTML for Admin Expiration Report
     let emailHtml = `
@@ -226,8 +357,8 @@ async function sendClientReminderEmail(username, email, daysLeft, expDateString)
   try {
     const clientHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
-        <h2 style="text-align: center; color: #f59e0b; border-bottom: 2px solid #24314f; padding-bottom: 12px;">📵 Expiration Notice: Meddix Pro</h2>
-        <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6; margin-top: 16px;">Hello <strong>${username}</strong>,</p>
+        <h2 style="text-align: center; color: #f59e0b; border-bottom: 2px solid #24314f; padding-bottom: 12px;">⚠️ Account Expiration Notice</h2>
+        <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6;">Hello <strong>${username}</strong>,</p>
         <p style="font-size: 14px; line-height: 1.6; color: #9ca3af; margin-top: 10px;">
           This is an automated reminder that your high-speed **UDP Custom Tunnel Account** is expiring soon.
         </p>
@@ -239,7 +370,7 @@ async function sendClientReminderEmail(username, email, daysLeft, expDateString)
         </div>
         
         <p style="font-size: 14px; line-height: 1.5; color: #9ca3af;">
-          To avoid service interruption and preserve your active sessions, please contact the administrator at <a href="mailto:ahmedmutumba@gmail.com" style="color: #4f46e5; text-decoration: none;">ahmedmutumba@gmail.com</a> to renew your account before it expires.
+          To avoid service interruption and preserve your active sessions, please contact the administrator at <a href="mailto:ahmedmutumba@gmail.com" style="color: #4f46e5;">ahmedmutumba@gmail.com</a> to renew your account before it expires.
         </p>
         
         <div style="text-align: center; margin-top: 30px; font-size: 11px; color: #9ca3af; border-top: 1px dashed #24314f; padding-top: 12px;">
@@ -353,7 +484,7 @@ app.post('/api/settings', (req, res) => {
   }
 });
 
-// GET /api/users - List all UDP users
+// GET /api/users - List all UDP users (With Data Counters!)
 app.get('/api/users', async (req, res) => {
   try {
     const usersRaw = await execPromise("cat /etc/passwd | grep 'home' | grep 'false' | grep -v 'syslog' | grep -v 'hwid' | grep -v 'token' | grep -v '::/' || true");
@@ -379,6 +510,7 @@ app.get('/api/users', async (req, res) => {
       let isExpired = false;
       let clientEmail = '';
       let clientPhone = '';
+      let dailyBytes = 0;
       
       const expFile = `/etc/UDPCustom/expiration/${username}`;
       if (fs.existsSync(expFile)) {
@@ -390,6 +522,7 @@ app.get('/api/users', async (req, res) => {
             expTimestamp = data.expTimestamp;
             clientEmail = data.email || '';
             clientPhone = data.phone || '';
+            dailyBytes = data.dailyBytes || 0;
           } else {
             expTimestamp = parseInt(rawContent, 10);
           }
@@ -430,6 +563,9 @@ app.get('/api/users', async (req, res) => {
         }
       }
 
+      // Convert daily bytes used to formatted string (e.g. 1.25 GB / 2.00 GB)
+      const formattedBytes = (dailyBytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+
       users.push({
         username,
         password,
@@ -439,7 +575,9 @@ app.get('/api/users', async (req, res) => {
         isExpired,
         isBlocked,
         clientEmail,
-        clientPhone
+        clientPhone,
+        dailyUsage: formattedBytes,
+        dailyBytes
       });
     }
 
@@ -473,11 +611,14 @@ app.post('/api/users', async (req, res) => {
     const expTimestamp = Math.floor(Date.now() / 1000) + expSecs;
     const daysRounded = Math.ceil(expSecs / 86400);
 
-    // Save high-precision custom metadata JSON
+    // Save high-precision custom metadata JSON (Includes Bandwidth Accounting!)
     const metadata = {
       expTimestamp,
       email: email || '',
-      phone: phone || ''
+      phone: phone || '',
+      dailyBytes: 0,
+      sent2GBWarningToday: false,
+      lastResetDate: new Date().toISOString().split('T')[0]
     };
     fs.mkdirSync('/etc/UDPCustom/expiration', { recursive: true });
     fs.writeFileSync(`/etc/UDPCustom/expiration/${username}`, JSON.stringify(metadata, null, 2));
@@ -486,6 +627,10 @@ app.post('/api/users', async (req, res) => {
 
     await execPromise(`useradd -M -s /bin/false -e "${validDate}" -K PASS_MAX_DAYS=${daysRounded} -c "${limit},${password}" "${username}"`);
     await execPromise(`echo "${username}:${password}" | chpasswd`);
+
+    // Setup active iptables rules to account for this user's traffic
+    await execPromise(`iptables -I OUTPUT -m owner --uid-owner "${username}" -j ACCEPT`).catch(console.error);
+    await execPromise(`iptables -I INPUT -m owner --uid-owner "${username}" -j ACCEPT`).catch(console.error);
 
     // 🔥 SEND WELCOME EMAIL IMMEDIATELY ON CREATION IF EMAIL IS SUPPLIED!
     if (email && email.trim() !== '') {
@@ -507,11 +652,14 @@ app.post('/api/users/update-details', async (req, res) => {
     const { username, email, phone } = req.body;
     if (!username) return res.status(400).json({ error: 'Username is required' });
 
-    // Verify if user exists
     const existing = await execPromise(`id -u ${username} &>/dev/null && echo "exists" || true`);
     if (existing !== 'exists') return res.status(404).json({ error: 'User not found on the system' });
 
     let expTimestamp = Math.floor(Date.now() / 1000) + (30 * 86400); // default 30 days fallback
+    let currentDailyBytes = 0;
+    let currentWarningToday = false;
+    let currentResetDate = new Date().toISOString().split('T')[0];
+
     const expFile = `/etc/UDPCustom/expiration/${username}`;
 
     if (fs.existsSync(expFile)) {
@@ -520,12 +668,14 @@ app.post('/api/users/update-details', async (req, res) => {
         if (rawContent.startsWith('{')) {
           const data = JSON.parse(rawContent);
           expTimestamp = data.expTimestamp;
+          currentDailyBytes = data.dailyBytes || 0;
+          currentWarningToday = data.sent2GBWarningToday || false;
+          currentResetDate = data.lastResetDate || currentResetDate;
         } else {
           expTimestamp = parseInt(rawContent, 10) || expTimestamp;
         }
       } catch (e) {}
     } else {
-      // Fallback from system chage
       const chageRaw = await execPromise(`chage -l ${username} | sed -n '4p' | awk -F ': ' '{print $2}'`).catch(() => '');
       if (chageRaw) {
         const expMs = Date.parse(chageRaw);
@@ -535,18 +685,24 @@ app.post('/api/users/update-details', async (req, res) => {
       }
     }
 
-    // Save updated metadata JSON
+    // Save updated metadata JSON (Preserving Bandwidth Statistics!)
     const metadata = {
       expTimestamp,
       email: email || '',
-      phone: phone || ''
+      phone: phone || '',
+      dailyBytes: currentDailyBytes,
+      sent2GBWarningToday: currentWarningToday,
+      lastResetDate: currentResetDate
     };
     fs.mkdirSync('/etc/UDPCustom/expiration', { recursive: true });
     fs.writeFileSync(expFile, JSON.stringify(metadata, null, 2));
 
+    // Ensure they have iptables accounting rules bound
+    await execPromise(`iptables -C OUTPUT -m owner --uid-owner "${username}" -j ACCEPT &>/dev/null || iptables -I OUTPUT -m owner --uid-owner "${username}" -j ACCEPT`).catch(() => {});
+    await execPromise(`iptables -C INPUT -m owner --uid-owner "${username}" -j ACCEPT &>/dev/null || iptables -I INPUT -m owner --uid-owner "${username}" -j ACCEPT`).catch(() => {});
+
     // 🔥 INSTANT WELCOME EMAIL TRIGGER ON DETAILS EDIT (If email is newly populated!)
     if (email && email.trim() !== '') {
-      // Extract their current password and connection limit from /etc/passwd
       const passwdLine = await execPromise(`cat /etc/passwd | grep "^${username}:" || true`);
       if (passwdLine) {
         const parts = passwdLine.split(':');
@@ -558,7 +714,6 @@ app.post('/api/users/update-details', async (req, res) => {
           const serverIp = req.headers.host?.split(':')[0] || 'your-server-ip';
           const expDateString = new Date(expTimestamp * 1000).toLocaleString();
           
-          // Calculate remaining time nicely for display
           let durationString = 'Active Plan';
           const diff = expTimestamp - Math.floor(Date.now() / 1000);
           if (diff > 0) {
@@ -595,6 +750,9 @@ app.post('/api/users/renew', async (req, res) => {
     let startTimestamp = Math.floor(Date.now() / 1000);
     let currentEmail = '';
     let currentPhone = '';
+    let currentDailyBytes = 0;
+    let currentWarningToday = false;
+    let currentResetDate = new Date().toISOString().split('T')[0];
 
     const expFile = `/etc/UDPCustom/expiration/${username}`;
     if (fs.existsSync(expFile)) {
@@ -605,6 +763,9 @@ app.post('/api/users/renew', async (req, res) => {
           const currentExpTs = data.expTimestamp;
           currentEmail = data.email || '';
           currentPhone = data.phone || '';
+          currentDailyBytes = data.dailyBytes || 0;
+          currentWarningToday = data.sent2GBWarningToday || false;
+          currentResetDate = data.lastResetDate || currentResetDate;
           if (currentExpTs > startTimestamp) {
             startTimestamp = currentExpTs;
           }
@@ -623,7 +784,10 @@ app.post('/api/users/renew', async (req, res) => {
     const metadata = {
       expTimestamp,
       email: currentEmail,
-      phone: currentPhone
+      phone: currentPhone,
+      dailyBytes: currentDailyBytes,
+      sent2GBWarningToday: currentWarningToday,
+      lastResetDate: currentResetDate
     };
     fs.mkdirSync('/etc/UDPCustom/expiration', { recursive: true });
     fs.writeFileSync(expFile, JSON.stringify(metadata, null, 2));
@@ -676,6 +840,10 @@ app.delete('/api/users/:username', async (req, res) => {
     if (fs.existsSync(expFile)) {
       fs.unlinkSync(expFile);
     }
+
+    // Clean iptables rules for this user
+    await execPromise(`iptables -D OUTPUT -m owner --uid-owner "${username}" -j ACCEPT`).catch(() => {});
+    await execPromise(`iptables -D INPUT -m owner --uid-owner "${username}" -j ACCEPT`).catch(() => {});
 
     res.json({ message: 'User deleted permanently' });
   } catch (err) {
