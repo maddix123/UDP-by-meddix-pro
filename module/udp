@@ -286,21 +286,34 @@ block_user() {
   done
 
   [[ ${selection} = "0" ]] && return
-  if [[ ! $(print_center -ama "${selection}" | egrep '[^0-9]') ]]; then
+  
+  # Core Fix: Safe robust numeric selection checks, avoiding any formatting crashes
+  if [[ "$selection" =~ ^[0-9]+$ ]]; then
     user_del="${active_users[$selection]}"
   else
     user_del="$selection"
   fi
+
   [[ -z $user_del ]] && {
     msg -verm "Error, Invalid User"
     msg -bar
     return 1
   }
-  [[ ! $(echo ${active_users[@]} | grep -w "$user_del") ]] && {
+
+  local found=false
+  for au in "${active_users[@]}"; do
+    if [[ "$au" = "$user_del" ]]; then
+      found=true
+      break
+    fi
+  done
+
+  if [[ "$found" = "false" ]]; then
     msg -verm "Error, Invalid User"
     msg -bar
+    sleep 3
     return 1
-  }
+  fi
 
   msg -nama "   Username: $user_del >>>> "
 
@@ -380,7 +393,9 @@ renew_user() {
   done
 
   [[ ${selection} = "0" ]] && return
-  if [[ ! $(print_center -ama "${selection}" | egrep '[^0-9]') ]]; then
+  
+  # Core Fix: Safe robust numeric selection checks, avoiding any formatting crashes
+  if [[ "$selection" =~ ^[0-9]+$ ]]; then
     useredit="${active_users[$selection]}"
   else
     useredit="$selection"
@@ -393,12 +408,20 @@ renew_user() {
     return 1
   }
 
-  [[ ! $(print_center -ama ${active_users[@]} | grep -w "$useredit") ]] && {
+  local found=false
+  for au in "${active_users[@]}"; do
+    if [[ "$au" = "$useredit" ]]; then
+      found=true
+      break
+    fi
+  done
+
+  if [[ "$found" = "false" ]]; then
     msg -verm "Error, Invalid User"
     msg -bar
     sleep 3
     return 1
-  }
+  fi
 
   while true; do
     msg -ne " New Duration (e.g. 30d, 12h, 45m) for $useredit"
@@ -481,19 +504,32 @@ remove_user() {
     tput cuu1 && tput dl1
   done
   [[ ${selection} = "0" ]] && return
-  if [[ ! $(print_center -ama "${selection}" | egrep '[^0-9]') ]]; then
+  
+  # Core Fix: Safe robust numeric selection checks, avoiding any formatting crashes
+  if [[ "$selection" =~ ^[0-9]+$ ]]; then
     user_del="${active_users[$selection]}"
   else
     user_del="$selection"
   fi
+
   [[ -z $user_del ]] && {
     msg -verm "Error, Invalid User"
     msg -bar
     return 1
   }
-  [[ ! $(echo ${active_users[@]} | grep -w "$user_del") ]] && {
+
+  local found=false
+  for au in "${active_users[@]}"; do
+    if [[ "$au" = "$user_del" ]]; then
+      found=true
+      break
+    fi
+  done
+
+  if [[ "$found" = "false" ]]; then
     msg -verm "Error, Invalid User"
     msg -bar
+    sleep 3
     return 1
   }
 
@@ -703,8 +739,8 @@ uninstall_udp_manager() {
   # rm -rf /etc/systemd/system/udp-request.service
   # rm -rf /etc/systemd/system/autostart.service
   rm -rf /usr/bin/udp-custom
-  rm -rf /root/udp/udp-custom
-  # rm -rf /usr/bin/udp-request
+  rm -root/udp/udp-custom
+  # rm -rf /root/udp/udp-request
   # rm -rf /usr/bin/udp-request
   rm -rf /root/udp/config.json
   rm -rf /etc/UDPCustom/udp-custom
