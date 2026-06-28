@@ -340,9 +340,9 @@ renew_user_fun() {
   local days_rounded=$(( (exp_secs + 86399) / 86400 ))
   valid=$(date '+%C%y-%m-%d' -d " +$days_rounded days")
   if chage -E $valid $1; then
-    print_center -ama "${a100:-Renewed User Successfully}"
+    print_center -ama "Renewed User Successfully"
   else
-    print_center -verm "${a101:-Error, Renewal failed!}"
+    print_center -verm "Error, Renewal failed!"
   fi
 }
 
@@ -350,16 +350,16 @@ renew_user() {
   clear
   active_users=('' $(show_users))
   msg -bar
-  print_center -ama "${a8:-RENEW USERS}"
+  print_center -ama "RENEW USERS"
   msg -bar
   data_user
   back
 
-  print_center -ama "${a52:-Type a Username from the list}"
+  print_center -ama "Type a Username from the list"
   msg -bar
   unset selection
   while [[ -z ${selection} ]]; do
-    msg -nazu "${a53:-Select an Option}: " && read selection
+    msg -nazu "Select an Option: " && read selection
     del 1
   done
 
@@ -371,21 +371,21 @@ renew_user() {
   fi
 
   [[ -z $useredit ]] && {
-    msg -verm "${a54:-Error, Invalid User}"
+    msg -verm "Error, Invalid User"
     msg -bar
     sleep 3
     return 1
   }
 
   [[ ! $(print_center -ama ${active_users[@]} | grep -w "$useredit") ]] && {
-    msg -verm "${a54:-Error, Invalid User}"
+    msg -verm "Error, Invalid User"
     msg -bar
     sleep 3
     return 1
   }
 
   while true; do
-    msg -ne "${a58:-New Duration (e.g. 30d, 12h, 45m)}: $useredit"
+    msg -ne " New Duration (e.g. 30d, 12h, 45m) for $useredit"
     read -p ": " userdays
     if [[ -z "$userdays" ]]; then
       print_center -ama -e '\n\n\n'
@@ -452,16 +452,16 @@ remove_user() {
   clear
   active_users=('' $(show_users))
   msg -bar
-  print_center -ama "${a7:-REMOVE USERS}"
+  print_center -ama "REMOVE USERS"
   msg -bar
   data_user
   back
 
-  print_center -ama "${a52:-Type or Select a User}"
+  print_center -ama "Type or Select a User"
   msg -bar
   unset selection
   while [[ -z ${selection} ]]; do
-    msg -nazu "${a53:-Please type a username}: " && read selection
+    msg -nazu "Please type a username: " && read selection
     tput cuu1 && tput dl1
   done
   [[ ${selection} = "0" ]] && return
@@ -471,22 +471,22 @@ remove_user() {
     user_del="$selection"
   fi
   [[ -z $user_del ]] && {
-    msg -verm "${a54:-Error, Invalid User}"
+    msg -verm "Error, Invalid User"
     msg -bar
     return 1
   }
   [[ ! $(echo ${active_users[@]} | grep -w "$user_del") ]] && {
-    msg -verm "${a54:-Error, Invalid User}"
+    msg -verm "Error, Invalid User"
     msg -bar
     return 1
   }
 
-  print_center -ama "${a55:-Selected User}: $user_del"
+  print_center -ama "Selected User: $user_del"
   rm_user "$user_del"
   if [[ $msj = 0 ]]; then
-    print_center -verd "[${a56:-Removed}]"
+    print_center -verd "[Removed]"
   else
-    print_center -verm "[${a57:-Not Removed}]"
+    print_center -verm "[Not Removed]"
   fi
   enter
 }
@@ -533,13 +533,13 @@ new_user() {
   clear
   active_users=('' $(show_users))
   msg -bar
-  print_center -ama "${a6:-CREATE USER ACCOUNT}"
+  print_center -ama "CREATE USER ACCOUNT"
   msg -bar
   data_user
   back
 
   while true; do
-    msg -ne " ${a41:-Username}: "
+    msg -ne " Username: "
     read nameuser
     nameuser="$(echo $nameuser | sed 'y/áÁàÀãÃâÂéÉêÊíÍóÓõÕôÔúÚñÑçÇªº/aAaAaAaAeEeEiIoOoOoOuUnNcCao/')"
     nameuser="$(echo $nameuser | sed -e 's/[^a-z0-9 -]//ig')"
@@ -558,7 +558,7 @@ new_user() {
   done
 
   while true; do
-    msg -ne " ${a42:-Password}"
+    msg -ne " Password"
     read -p ": " userpass
     userpass="$(echo $userpass | sed 'y/áÁàÀãÃâÂéÉêÊíÍóÓõÕôÔúÚñÑçÇªº/aAaAaAaAeEeEiIoOoOoOuUnNcCao/')"
     if [[ -z $userpass ]]; then
@@ -572,7 +572,7 @@ new_user() {
   done
 
   while true; do
-    msg -ne " ${a43:-Duration (e.g. 30d, 12h, 45m)}"
+    msg -ne " Duration (e.g. 30d, 12h, 45m)"
     read -p ": " userdays
     if [[ -z "$userdays" ]]; then
       err_fun 7 && continue
@@ -583,7 +583,7 @@ new_user() {
   done
 
   while true; do
-    msg -ne " ${a44:-Connection Limit}"
+    msg -ne " Connection Limit"
     read -p ": " limiteuser
     if [[ -z "$limiteuser" ]]; then
       err_fun 11 && continue
@@ -599,20 +599,20 @@ new_user() {
   clear
   msg -bar
   if [[ $msj = 0 ]]; then
-    print_center -verd "${a45:-User Created Successfully}"
+    print_center -verd "User Created Successfully"
   else
-    print_center -verm2 "${a46:-Error, user not created}"
+    print_center -verm2 "Error, user not created"
     enter
     return 1
   fi
   msg -bar
-  msg -ne " ${a47:-Server IP}: " && msg -ama "    $request_public_ip"
-  msg -ne " ${a47:-Port Range}: " && msg -ama "    1-65535"
-  msg -ne " ${a48:-Username}: " && msg -ama "         $nameuser"
-  msg -ne " ${a49:-Password}: " && msg -ama "         $userpass"
-  msg -ne " ${a50:-Duration}: " && msg -ama "         $userdays"
-  msg -ne " ${a44:-Connection Limit}: " && msg -ama " $limiteuser"
-  msg -ne " ${a51:-Expiration Date}: " && msg -ama "$(date "+%F" -d " + $userdays days")"
+  msg -ne " Server IP: " && msg -ama "    $request_public_ip"
+  msg -ne " Port Range: " && msg -ama "    1-65535"
+  msg -ne " Username: " && msg -ama "         $nameuser"
+  msg -ne " Password: " && msg -ama "         $userpass"
+  msg -ne " Duration: " && msg -ama "         $userdays"
+  msg -ne " Connection Limit: " && msg -ama " $limiteuser"
+  msg -ne " Expiration Date: " && msg -ama "$(date "+%F" -d " + $userdays days")"
   enter
 }
 
@@ -1040,12 +1040,12 @@ menu_udp_custom() {
   msg -bar3
   print_center -ama "${a12:-QUICK MENU}"
   msg -bar3
-  echo " $(msg -verd "[2]") $(msg -verm2 '>') $(msg -verd "${a6:-Create User}")"
-  echo " $(msg -verd "[3]") $(msg -verm2 '>') $(msg -verm2 "${a7:-Remove User}")"
-  echo " $(msg -verd "[4]") $(msg -verm2 '>') $(msg -ama "${a8:-Renew User}")"
-  echo " $(msg -verd "[5]") $(msg -verm2 '>') $(msg -blu "${a9:-Block/Unlock User}")"
-  echo " $(msg -verd "[6]") $(msg -verm2 '>') $(msg -verm3 "${a10:-User Details}")"
-  echo " $(msg -verd "[7]") $(msg -verm2 '>') $(msg -teal "${a11:-Limit Accounts}")"
+  echo " $(msg -verd "[2]") $(msg -verm2 '>') $(msg -verd "Create User")"
+  echo " $(msg -verd "[3]") $(msg -verm2 '>') $(msg -verm2 "Remove User")"
+  echo " $(msg -verd "[4]") $(msg -verm2 '>') $(msg -ama "Renew User")"
+  echo " $(msg -verd "[5]") $(msg -verm2 '>') $(msg -blu "Block/Unlock User")"
+  echo " $(msg -verd "[6]") $(msg -verm2 '>') $(msg -verm3 "User Details")"
+  echo " $(msg -verd "[7]") $(msg -verm2 '>') $(msg -teal "Limit Accounts")"
   msg -bar3
   back
   # option=$(selection_fun $num)
@@ -1082,13 +1082,13 @@ menu_main() {
   # print options menu
   print_center -ama "${a12:-CHOOSE UDP CORE}"
   msg -bar3
-  echo " $(msg -verd "[1]") $(msg -verm2 '>') $(msg -verd "${a6:-UDP Custom}")"
+  echo " $(msg -verd "[1]") $(msg -verm2 '>') $(msg -verd "UDP Custom")"
   # echo " $(msg -verd "[2]") $(msg -verm2 '>') $(msg -ama "${a8:-UDP Request}")"
   msg -bar3
-  echo " $(msg -verd "[3]") $(msg -verm2 '>') $(msg -teal "${a11:-Tweak UDP Speed $(msg -verm2 '[!Caution!]')}")"
-  echo " $(msg -verd "[4]") $(msg -verm2 '>') $(msg -teal "${a10:-VPS Info}")"
+  echo " $(msg -verd "[3]") $(msg -verm2 '>') $(msg -teal "Tweak UDP Speed $(msg -verm2 '[!Caution!]')")"
+  echo " $(msg -verd "[4]") $(msg -verm2 '>') $(msg -teal "VPS Info")"
   msg -bar3
-  echo " $(msg -verd "[10]") $(msg -verm2 '>') $(msg -verm2 "${a3:-Uninstall UDP Manager}")"
+  echo " $(msg -verd "[10]") $(msg -verm2 '>') $(msg -verm2 "Uninstall UDP Manager")"
   exit2home
 
   # prompt user for option selection
