@@ -4,6 +4,7 @@ import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import nodemailer from 'nodemailer';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,14 +30,177 @@ const execPromise = (cmd) => {
   });
 };
 
+// ==================== SMTP NODEMAILER SETTINGS ====================
+
+const transporter = nodemailer.createTransport({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // TLS
+  auth: {
+    user: 'ai.ahmedmutumba@gmail.com',
+    pass: 'imsnogymbhgbppdq' // 16-char App Password
+  }
+});
+
+// Helper to compile and send the expiration report email
+async function sendExpiryReport() {
+  try {
+    const usersRaw = await execPromise("cat /etc/passwd | grep 'home' | grep 'false' | grep -v 'syslog' | grep -v 'hwid' | grep -v 'token' | grep -v '::/' || true");
+    if (!usersRaw) return;
+
+    const lines = usersRaw.split('\n');
+    const expiredUsers = [];
+    const warningUsers = []; // Remaining with 5 days or less
+
+    const now = Math.floor(Date.now() / 1000);
+
+    for (const line of lines) {
+      const parts = line.split(':');
+      if (parts.length < 5) continue;
+      
+      const username = parts[0];
+      const commentParts = parts[4].split(',');
+      const limit = commentParts[0] || '1';
+      const password = commentParts[1] || 'No password';
+
+      let expTimestamp = null;
+      let expDateString = 'N/A';
+      
+      const expFile = `/etc/UDPCustom/expiration/${username}`;
+      if (fs.existsSync(expFile)) {
+        expTimestamp = parseInt(fs.readFileSync(expFile, 'utf8').trim(), 10);
+        expDateString = new Date(expTimestamp * 1000).toLocaleString();
+      } else {
+        // Fallback to chage
+        const chageRaw = await execPromise(`chage -l ${username} | sed -n '4p' | awk -F ': ' '{print $2}'`).catch(() => '');
+        if (chageRaw) {
+          expDateString = chageRaw;
+          const expMs = Date.parse(chageRaw);
+          if (!isNaN(expMs)) {
+            expTimestamp = Math.floor(expMs / 1000);
+          }
+        }
+      }
+
+      if (expTimestamp) {
+        const remainingSecs = expTimestamp - now;
+        const userObj = { username, password, limit, expDate: expDateString };
+
+        if (remainingSecs <= 0) {
+          expiredUsers.push(userObj);
+        } else if (remainingSecs <= 5 * 24 * 3600) {
+          userObj.daysLeft = Math.ceil(remainingSecs / 86400);
+          warningUsers.push(userObj);
+        }
+      }
+    }
+
+    // Build Email Body HTML
+    let emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 650px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
+        <h2 style="text-align: center; color: #10b981; border-bottom: 2px solid #24314f; padding-bottom: 12px;">📊 UDP Custom Expiration Report</h2>
+        <p style="font-size: 14px; color: #9ca3af; margin-top: 16px;">This is your automated daily report generated at 6:00 AM East African Time (EAT).</p>
+    `;
+
+    // Expired Users Section
+    emailHtml += `<h3 style="color: #ef4444; margin-top: 24px; border-bottom: 1px solid #24314f; padding-bottom: 6px;">❌ Expired Accounts (${expiredUsers.length})</h3>`;
+    if (expiredUsers.length > 0) {
+      emailHtml += `
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px;">
+          <tr style="background: #151d30; color: #9ca3af;">
+            <th style="padding: 10px; text-align: left; border: 1px solid #24314f;">Username</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #24314f;">Password</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #24314f;">Limit</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #24314f;">Expired Date</th>
+          </tr>
+      `;
+      expiredUsers.forEach(u => {
+        emailHtml += `
+          <tr>
+            <td style="padding: 8px; border: 1px solid #24314f;"><strong>${u.username}</strong></td>
+            <td style="padding: 8px; border: 1px solid #24314f;">${u.password}</td>
+            <td style="padding: 8px; border: 1px solid #24314f;">${u.limit}</td>
+            <td style="padding: 8px; border: 1px solid #24314f; color: #ef4444;">${u.expDate}</td>
+          </tr>
+        `;
+      });
+      emailHtml += `</table>`;
+    } else {
+      emailHtml += `<p style="color: #9ca3af; font-size: 13px; font-style: italic;">No expired accounts on the server.</p>`;
+    }
+
+    // Expiring Soon Section
+    emailHtml += `<h3 style="color: #f59e0b; margin-top: 24px; border-bottom: 1px solid #24314f; padding-bottom: 6px;">⚠️ Expiring Within 5 Days (${warningUsers.length})</h3>`;
+    if (warningUsers.length > 0) {
+      emailHtml += `
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px;">
+          <tr style="background: #151d30; color: #9ca3af;">
+            <th style="padding: 10px; text-align: left; border: 1px solid #24314f;">Username</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #24314f;">Password</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #24314f;">Limit</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #24314f;">Time Left</th>
+            <th style="padding: 10px; text-align: left; border: 1px solid #24314f;">Expiry Date</th>
+          </tr>
+      `;
+      warningUsers.forEach(u => {
+        emailHtml += `
+          <tr>
+            <td style="padding: 8px; border: 1px solid #24314f;"><strong>${u.username}</strong></td>
+            <td style="padding: 8px; border: 1px solid #24314f;">${u.password}</td>
+            <td style="padding: 8px; border: 1px solid #24314f;">${u.limit}</td>
+            <td style="padding: 8px; border: 1px solid #24314f; color: #f59e0b; font-weight: bold;">${u.daysLeft} days</td>
+            <td style="padding: 8px; border: 1px solid #24314f;">${u.expDate}</td>
+          </tr>
+        `;
+      });
+      emailHtml += `</table>`;
+    } else {
+      emailHtml += `<p style="color: #9ca3af; font-size: 13px; font-style: italic;">No accounts are expiring within 5 days.</p>`;
+    }
+
+    emailHtml += `
+        <div style="text-align: center; margin-top: 30px; font-size: 11px; color: #9ca3af; border-top: 1px dashed #24314f; padding-top: 12px;">
+          UDP custom tunnel reports powered by UDP by Meddix Pro.
+        </div>
+      </div>
+    `;
+
+    // Send Email
+    await transporter.sendMail({
+      from: '"Meddix UDP Pro" <info@mods99.com>',
+      to: 'ahmedmutumba@gmail.com',
+      subject: `📊 UDP Expiration Report: ${expiredUsers.length} Expired | ${warningUsers.length} Warning`,
+      html: emailHtml
+    });
+
+    console.log('✅ Daily expiration email report sent successfully to ahmedmutumba@gmail.com!');
+  } catch (err) {
+    console.error('Error compiling or sending daily expiration report:', err);
+  }
+}
+
+// Active daily scheduler check running every minute
+let lastSentDay = null;
+setInterval(() => {
+  const now = new Date();
+  const utcHour = now.getUTCHours();
+  const utcDay = now.getUTCDate();
+  
+  // 6:00 AM East African Time (EAT) is exactly 3:00 AM Coordinated Universal Time (UTC)
+  if (utcHour === 3) {
+    if (lastSentDay !== utcDay) {
+      sendExpiryReport();
+      lastSentDay = utcDay;
+    }
+  }
+}, 60 * 1000); // Check every minute
+
 // ==================== API ENDPOINTS ====================
 
 // GET /api/users - List all UDP users
 app.get('/api/users', async (req, res) => {
   try {
-    // Extract users from /etc/passwd that match home/false/etc
     const usersRaw = await execPromise("cat /etc/passwd | grep 'home' | grep 'false' | grep -v 'syslog' | grep -v 'hwid' | grep -v 'token' | grep -v '::/' || true");
-    
     if (!usersRaw) return res.json({ users: [] });
 
     const lines = usersRaw.split('\n');
@@ -51,11 +215,9 @@ app.get('/api/users', async (req, res) => {
       const limit = commentParts[0] || '1';
       const password = commentParts[1] || 'No password';
 
-      // Check block/lock status
       const lockStatus = await execPromise(`passwd --status ${username} | cut -d ' ' -f2`).catch(() => 'P');
       const isBlocked = lockStatus !== 'P';
 
-      // Get high-precision custom expiration or standard chage date
       let expDate = 'N/A';
       let remaining = 'Exp';
       let isExpired = false;
@@ -85,7 +247,6 @@ app.get('/api/users', async (req, res) => {
           console.error(e);
         }
       } else {
-        // Fallback to standard chage date
         const chageRaw = await execPromise(`chage -l ${username} | sed -n '4p' | awk -F ': ' '{print $2}'`).catch(() => '');
         if (chageRaw && chageRaw.trim() !== '') {
           expDate = chageRaw;
@@ -128,11 +289,9 @@ app.post('/api/users', async (req, res) => {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
-    // Check if user already exists
     const existing = await execPromise(`id -u ${username} &>/dev/null && echo "exists" || true`);
     if (existing === 'exists') return res.status(400).json({ error: 'Username already exists' });
 
-    // Parse duration input (e.g. 30d, 12h, 45m)
     const val = parseInt(duration.match(/^\d+/)?.[0] || '30', 10);
     const unit = duration.match(/[dhm]$/)?.[0] || 'd';
     
@@ -144,16 +303,12 @@ app.post('/api/users', async (req, res) => {
     const expTimestamp = Math.floor(Date.now() / 1000) + expSecs;
     const daysRounded = Math.ceil(expSecs / 86400);
 
-    // Save expiration file
     fs.mkdirSync('/etc/UDPCustom/expiration', { recursive: true });
     fs.writeFileSync(`/etc/UDPCustom/expiration/${username}`, String(expTimestamp));
 
     const validDate = await execPromise(`date '+%C%y-%m-%d' -d " +${daysRounded} days"`);
 
-    // Create system-level user without password first (compat with all crypt options)
     await execPromise(`useradd -M -s /bin/false -e "${validDate}" -K PASS_MAX_DAYS=${daysRounded} -c "${limit},${password}" "${username}"`);
-
-    // Set password securely and compatibly using chpasswd (Bypasses openssl hash conflicts!)
     await execPromise(`echo "${username}:${password}" | chpasswd`);
 
     res.status(201).json({ message: 'User created successfully', username });
@@ -217,7 +372,6 @@ app.post('/api/users/block', async (req, res) => {
       await execPromise(`usermod -U ${username}`);
       res.json({ message: 'User unlocked successfully', isBlocked: false });
     } else {
-      // Force kill all active sessions and lock
       await execPromise(`pkill -9 -u ${username}`).catch(() => {});
       await execPromise(`usermod -L ${username}`);
       res.json({ message: 'User blocked and disconnected successfully', isBlocked: true });
@@ -233,11 +387,9 @@ app.delete('/api/users/:username', async (req, res) => {
   try {
     const { username } = req.params;
     
-    // Kill active sessions and delete user
     await execPromise(`pkill -9 -u ${username}`).catch(() => {});
     await execPromise(`userdel --force ${username}`);
     
-    // Clean custom expiration file
     const expFile = `/etc/UDPCustom/expiration/${username}`;
     if (fs.existsSync(expFile)) {
       fs.unlinkSync(expFile);
@@ -247,6 +399,16 @@ app.delete('/api/users/:username', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// POST /api/admin/send-test-email - Trigger manual SMTP verification email instantly
+app.post('/api/admin/send-test-email', async (req, res) => {
+  try {
+    await sendExpiryReport();
+    res.json({ message: 'Test verification email compiled and successfully dispatched to ahmedmutumba@gmail.com!' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to dispatch test email: ' + err.message });
   }
 });
 
