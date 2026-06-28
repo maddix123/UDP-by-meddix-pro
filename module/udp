@@ -148,7 +148,7 @@ limiter() {
 data_user() {
   cat_users=$(cat "/etc/passwd" | grep 'home' | grep 'false' | grep -v 'syslog' | grep -v '::/' | grep -v 'hwid\|token')
   [[ -z "$(echo "${cat_users}" | head -1)" ]] && print_center -verm2 "${a96:-NO REGISTERED SSH USERS}" && return 1
-  dat_us=$(printf '%-13s%-14s%-10s%-4s%-6s%s' "${a48:-User}" "${a49:-Pass}" "${a97:-Date}" "${a98:-Days}" 'Lmt' 'Stat')
+  dat_us=$(printf '%-13s%-14s%-10s%-4s%-6s%s' "User" "Pass" "Date" "Days" 'Lmt' 'Stat')
   msg -azu "  $dat_us"
   msg -bar
 
@@ -159,7 +159,7 @@ data_user() {
     us=$(printf '%-12s' "$u")
 
     pass=$(echo "$line" | awk -F ':' '{print $5}' | cut -d ',' -f2)
-    [[ "${#pass}" -gt '12' ]] && pass="${a99:-Discount}"
+    [[ "${#pass}" -gt '12' ]] && pass="Discount"
     pass="$(printf '%-12s' "$pass")"
 
     unset stat
@@ -192,7 +192,9 @@ data_user() {
         remaining_text="Exp"
       else
         local diff=$(( exp_timestamp - now_timestamp ))
-        if [[ $diff -lt 3600 ]]; then
+        if [[ $diff -lt 60 ]]; then
+          remaining_text="${diff}s"
+        elif [[ $diff -lt 3600 ]]; then
           local mins=$(( diff / 60 ))
           remaining_text="${mins}m"
         elif [[ $diff -lt 86400 ]]; then
@@ -248,13 +250,13 @@ detail_user() {
   active_users=('' $(show_users))
   if [[ -z ${active_users[@]} ]]; then
     msg -bar
-    print_center -verm2 "${a62:-No registered user}"
+    print_center -verm2 "No registered user"
     msg -bar
     sleep 3
     return
   else
     msg -bar
-    print_center -ama "${a63:-DETAILS OF USERS}"
+    print_center -ama "DETAILS OF USERS"
     msg -bar
   fi
   data_user
@@ -268,16 +270,16 @@ block_user() {
   clear
   active_users=('' $(show_users))
   msg -bar
-  print_center -ama "${a9:-BLOCK/UNBLOCK USERS}"
+  print_center -ama "BLOCK/UNBLOCK USERS"
   msg -bar
   data_user
   back
 
-  print_center -ama "${a52:-Type a Username from the list}"
+  print_center -ama "Type a Username from the list"
   msg -bar
   unset selection
   while [[ ${selection} = "" ]]; do
-    msg -nazu "${a53:-Please type a username}: " && read selection
+    msg -nazu "Please type a username: " && read selection
     del 1
   done
 
@@ -288,17 +290,17 @@ block_user() {
     user_del="$selection"
   fi
   [[ -z $user_del ]] && {
-    msg -verm "${a54:-Error, Invalid User}"
+    msg -verm "Error, Invalid User"
     msg -bar
     return 1
   }
   [[ ! $(echo ${active_users[@]} | grep -w "$user_del") ]] && {
-    msg -verm "${a54:-Error, Invalid User}"
+    msg -verm "Error, Invalid User"
     msg -bar
     return 1
   }
 
-  msg -nama "   ${a48:-Username}: $user_del >>>> "
+  msg -nama "   Username: $user_del >>>> "
 
   if [[ $(passwd --status $user_del | cut -d ' ' -f2) = "P" ]]; then
     pkill -u $user_del &>/dev/null
@@ -306,11 +308,11 @@ block_user() {
     kill -9 $droplim &>/dev/null
     usermod -L $user_del &>/dev/null
     sleep 2
-    msg -verm2 "${a60:-Blocked}"
+    msg -verm2 "Blocked"
   else
     usermod -U $user_del
     sleep 2
-    msg -verd "${a61:-Unblocked}"
+    msg -verd "Unblocked"
   fi
   msg -bar
   sleep 3
@@ -605,6 +607,21 @@ new_user() {
     enter
     return 1
   fi
+  
+  # High-precision Expiration Date formatting for the success screen
+  local val_s=$(echo "$userdays" | grep -oE '^[0-9]+')
+  local unit_s=$(echo "$userdays" | grep -oE '[dhm]$')
+  [[ -z "$unit_s" ]] && unit_s="d"
+  local date_arg=""
+  if [[ "$unit_s" = "d" ]]; then
+    date_arg="+$val_s days"
+  elif [[ "$unit_s" = "h" ]]; then
+    date_arg="+$val_s hours"
+  elif [[ "$unit_s" = "m" ]]; then
+    date_arg="+$val_s minutes"
+  fi
+  local exp_formatted_date=$(date "+%Y-%m-%d %H:%M:%S" -d "$date_arg")
+
   msg -bar
   msg -ne " Server IP: " && msg -ama "    $request_public_ip"
   msg -ne " Port Range: " && msg -ama "    1-65535"
@@ -612,7 +629,7 @@ new_user() {
   msg -ne " Password: " && msg -ama "         $userpass"
   msg -ne " Duration: " && msg -ama "         $userdays"
   msg -ne " Connection Limit: " && msg -ama " $limiteuser"
-  msg -ne " Expiration Date: " && msg -ama "$(date "+%F" -d " + $userdays days")"
+  msg -ne " Expiration Date: " && msg -ama "  $exp_formatted_date"
   enter
 }
 
@@ -824,11 +841,11 @@ quit_exclude() {
   if [[ ! ${#ports[@]} = 1 ]]; then
     let a++
     msg -bar
-    echo "             $(msg -verd "[0]") $(msg -verm2 ">") $(msg -bra "\033[1;41m${a89:-GO BACK}")  $(msg -verd "[$a]") $(msg -verm2 "> ${a90:-REMOVE ALL}")"
+    echo "             $(msg -verd "[0]") $(msg -verm2 ">") $(msg -bra "\033[1;41mGO BACK")  $(msg -verd "[$a]") $(msg -verm2 "> REMOVE ALL")"
     msg -bar
   else
     msg -bar
-    echo "             $(msg -verd "[0]") $(msg -verm2 ">") $(msg -bra "\033[1;41m${a89:-GO BACK}")"
+    echo "             $(msg -verd "[0]") $(msg -verm2 ">") $(msg -bra "\033[1;41mGO BACK")"
     msg -bar
   fi
   option=$(selection_fun $a)
@@ -840,13 +857,13 @@ quit_exclude() {
   fi
   if [[ $option = $a ]]; then
     sed -i "s/$exclude /" /etc/systemd/system/udp-request.service
-    print_center -ama "${a91:-Removed all excluded ports}"
+    print_center -ama "Removed all excluded ports"
   else
     let option--
     unset Port
     for ((i = 0; i < ${#ports[@]}; i++)); do
       [[ $i = $option ]] && continue
-      echo "$(msg -ama " ${a27:-Port to exclude} >") $(msg -azu "${ports[$i]}") $(msg -verd "OK")"
+      echo "$(msg -ama " Port to exclude >") $(msg -azu "${ports[$i]}") $(msg -verd "OK")"
       Port+=" ${ports[$i]}"
     done
     Port=$(echo $Port | sed 's/ /,/g')
@@ -865,11 +882,11 @@ tweak_udp_speed() {
   clear
   echo ""
   msg -bar
-  echo "$(msg -verm2 "${a3:-  A RISK TO YOUR SYSTEM}")"
-  echo "$(msg -verm2 "${a8:-  ⇢ ... this may or may-not work,}")"
-  echo "$(msg -verm2 "${a8:-    depending on your OS Image!}")"
+  echo "$(msg -verm2 "  A RISK TO YOUR SYSTEM")"
+  echo "$(msg -verm2 "  ⇢ ... this may or may-not work,")"
+  echo "$(msg -verm2 "    depending on your OS Image!")"
   sleep 2
-  echo "$(msg -verm2 "${a8:-  ⇢ patching...}")"
+  echo "$(msg -verm2 "  ⇢ patching...")"
   sleep 2
   # Turn off TCP Timestamps to improve UDP throughput
   echo 0 >/proc/sys/net/ipv4/tcp_timestamps
@@ -892,8 +909,8 @@ tweak_udp_speed() {
   sudo systemctl restart NetworkManager &>/dev/null
 
   sleep 2
-  echo "${a6:-  ⇢ You may see network speed improvement on this Server.}"
-  echo "${a6:-  ⇢ Done!}"
+  echo "  ⇢ You may see network speed improvement on this Server."
+  echo "  ⇢ Done!"
   msg -bar0
   sleep 3
 }
@@ -925,7 +942,7 @@ vps_info() {
   ram=$(free -m | awk 'NR==2{printf "%.2f%%", $3*100/$2 }')
 
   clear
-  title_sub "\033[3;40m${a10:-•UDP Custom Manager} by @voltssh•"
+  title_sub "\033[3;40m•UDP Custom Manager by @voltssh•"
   print_center -ama ' Version: ⇢ 2.5-Lite'
   print_center -ama ' VPS Info'
   msg -bar
@@ -948,7 +965,7 @@ vps_info() {
 # [UDP - Request]
 menu_udp_request() {
   make_service
-  title "\033[3;40m${a10:-•UDP Custom | UDP Request Manager} by @voltssh•"
+  title "\033[3;40m•UDP Custom | UDP Request Manager by @voltssh•"
   print_center -ama ' Version: ⇢ 2.5-Lite'
   print_center -ama ' UDP REQUEST'
   print_center -ama ' Tunnel App : SocksIP'
@@ -957,7 +974,7 @@ menu_udp_request() {
     port=$(cat /etc/systemd/system/udp-request.service | grep 'exclude')
     if [[ ! $port = "" ]]; then
       port=$(echo $port | awk '{print $4}' | cut -d '=' -f2 | sed 's/,/ /g')
-      print_center -ama "${a2:-EXCLUDED PORTS} $port"
+      print_center -ama "EXCLUDED PORTS $port"
       msg -bar0
       msg -bar
     fi
@@ -979,24 +996,24 @@ menu_udp_request() {
     fi
   fi
 
-  echo -e " $(msg -verd "[1]") $(msg -verm2 '>') $(msg -azu "${a2:-Activate/Deactivate UDP-Request}") $state"
+  echo -e " $(msg -verd "[1]") $(msg -verm2 '>') $(msg -azu "Activate/Deactivate UDP-Request") $state"
   msg -bar0
   msg -bar3
-  print_center -ama "${a12:-QUICK MENU}"
+  print_center -ama "QUICK MENU"
   msg -bar3
-  echo " $(msg -verd "[2]") $(msg -verm2 '>') $(msg -verd "${a6:-Create User}")"
-  echo " $(msg -verd "[3]") $(msg -verm2 '>') $(msg -verm2 "${a7:-Remove User}")"
-  echo " $(msg -verd "[4]") $(msg -verm2 '>') $(msg -ama "${a8:-Renew User}")"
-  echo " $(msg -verd "[5]") $(msg -verm2 '>') $(msg -blu "${a9:-Block/Unlock User}")"
-  echo " $(msg -verd "[6]") $(msg -verm2 '>') $(msg -verm3 "${a10:-User Details}")"
-  echo " $(msg -verd "[7]") $(msg -verm2 '>') $(msg -teal "${a11:-Limit Accounts}")"
+  echo " $(msg -verd "[2]") $(msg -verm2 '>') $(msg -verd "Create User")"
+  echo " $(msg -verd "[3]") $(msg -verm2 '>') $(msg -verm2 "Remove User")"
+  echo " $(msg -verd "[4]") $(msg -verm2 '>') $(msg -ama "Renew User")"
+  echo " $(msg -verd "[5]") $(msg -verm2 '>') $(msg -blu "Block/Unlock User")"
+  echo " $(msg -verd "[6]") $(msg -verm2 '>') $(msg -verm3 "User Details")"
+  echo " $(msg -verd "[7]") $(msg -verm2 '>') $(msg -teal "Limit Accounts")"
   msg -bar3
-  print_center -ama "${a12:-Port Exclusion List}"
+  print_center -ama "Port Exclusion List"
   msg -bar3
-  echo " $(msg -verd "[8]") $(msg -verm2 '>') $(msg -verd "${a13:-Add Port To The Exclusion List}")"
+  echo " $(msg -verd "[8]") $(msg -verm2 '>') $(msg -verd "Add Port To The Exclusion List")"
   num=8
   if [[ ! $port = "" ]]; then
-    echo " $(msg -verd "[9]") $(msg -verm2 '>') $(msg -verm2 "${a14:-Port Exclusion List}")"
+    echo " $(msg -verd "[9]") $(msg -verm2 '>') $(msg -verm2 "Port Exclusion List")"
     num=9
   fi
   back
@@ -1019,7 +1036,7 @@ menu_udp_request() {
 # [UDP - Custom]
 menu_udp_custom() {
   # title "\033[3;40m${a10:-•UDP Custom | UDP Request Manager} by @voltssh•"
-  title_sub "\033[3;40m${a10:-•UDP Custom Manager} by @voltssh•"
+  title_sub "\033[3;40m•UDP Custom Manager by @voltssh•"
   print_center -ama ' Version: 2.5-Lite'
   print_center -ama ' UDP CUSTOM'
   print_center -ama ' Tunnel App : HTTP Custom'
@@ -1035,10 +1052,10 @@ menu_udp_custom() {
   else
     state="\e[1m\e[31m[OFF]"
   fi
-  echo -e " $(msg -verd "[1]") $(msg -verm2 '>') $(msg -azu "${a2:-Activate/Deactivate UDP-Custom}") $state"
+  echo -e " $(msg -verd "[1]") $(msg -verm2 '>') $(msg -azu "Activate/Deactivate UDP-Custom") $state"
   msg -bar0
   msg -bar3
-  print_center -ama "${a12:-QUICK MENU}"
+  print_center -ama "QUICK MENU"
   msg -bar3
   echo " $(msg -verd "[2]") $(msg -verm2 '>') $(msg -verd "Create User")"
   echo " $(msg -verd "[3]") $(msg -verm2 '>') $(msg -verm2 "Remove User")"
@@ -1066,7 +1083,7 @@ menu_udp_custom() {
 # [MAIN MENU]A
 menu_main() {
   # title "\033[3;40m${a10:-• UDP Custom | UDP Request Manager} •"
-  main_title "\033[3;40m${a10:-• UDP Custom Manager} •"
+  main_title "\033[3;40m• UDP Custom Manager •"
   print_center -ama 'Version: ⇢ 2.5-Lite'
   print_center -ama 'by @voltssh'
   msg -bar
@@ -1080,12 +1097,12 @@ menu_main() {
   msg -bar0
 
   # print options menu
-  print_center -ama "${a12:-CHOOSE UDP CORE}"
+  print_center -ama "CHOOSE UDP CORE"
   msg -bar3
   echo " $(msg -verd "[1]") $(msg -verm2 '>') $(msg -verd "UDP Custom")"
   # echo " $(msg -verd "[2]") $(msg -verm2 '>') $(msg -ama "${a8:-UDP Request}")"
   msg -bar3
-  echo " $(msg -verd "[3]") $(msg -verm2 '>') $(msg -teal "Tweak UDP Speed $(msg -verm2 '[!Caution!]')")"
+  echo " $(msg -verd "[3]") $(msg -verm2 '>') $(msg -teal "Tweak UDP Speed [!Caution!]")"
   echo " $(msg -verd "[4]") $(msg -verm2 '>') $(msg -teal "VPS Info")"
   msg -bar3
   echo " $(msg -verd "[10]") $(msg -verm2 '>') $(msg -verm2 "Uninstall UDP Manager")"
