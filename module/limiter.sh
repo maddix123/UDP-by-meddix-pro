@@ -81,8 +81,23 @@ sshmonitor(){
 
 expired(){
     while read line; do
-      userDate=$(chage -l "$line"|sed -n '4p'|awk -F ': ' '{print $2}')
-      if [[ $(date '+%s') -gt $(date '+%s' -d "$userDate") ]]; then
+      local is_expired=false
+      local exp_file="/etc/UDPCustom/expiration/$line"
+      
+      if [[ -f "$exp_file" ]]; then
+        local exp_timestamp=$(cat "$exp_file" | tr -d '\r\n')
+        if [[ $(date '+%s') -gt "$exp_timestamp" ]]; then
+          is_expired=true
+        fi
+      else
+        # Fallback to standard chage calculation for legacy users
+        local userDate=$(chage -l "$line"|sed -n '4p'|awk -F ': ' '{print $2}')
+        if [[ $(date '+%s') -gt $(date '+%s' -d "$userDate") ]]; then
+          is_expired=true
+        fi
+      fi
+      
+      if [[ "$is_expired" = "true" ]]; then
         if [[ $(passwd --status $line|cut -d ' ' -f2) = "P" ]]; then  
           # Lock user login
           usermod -L $line
