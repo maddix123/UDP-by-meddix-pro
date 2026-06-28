@@ -1,0 +1,14 @@
+{
+  "name": "udp-web-portal",
+  "version": "1.0.0",
+  "description": "Premium UDP by Meddix Pro Web Portal",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}

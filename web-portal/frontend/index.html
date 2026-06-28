@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UDP Custom Admin Portal</title>
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-dark: #3730a3;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --bg: #0b0f19;
+      --card: #151d30;
+      --card-hover: #1e2942;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --border: #24314f;
+      --input-bg: #0b0f19;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .navbar {
+      background: var(--card);
+      padding: 16px 24px;
+      border-radius: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      border: 1px solid var(--border);
+    }
+
+    .navbar h2 {
+      font-size: 1.5rem;
+      background: linear-gradient(135deg, #4f46e5, #10b981);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .dashboard-grid { grid-template-columns: 1fr; }
+    }
+
+    .section {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      border: 1px solid var(--border);
+    }
+
+    .section h2 {
+      margin-bottom: 16px;
+      font-size: 1.25rem;
+      color: var(--text);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+
+    .form-group input, .form-group select {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--input-bg);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .btn-primary { background: var(--primary); color: white; width: 100%; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-secondary { background: var(--card-hover); color: var(--text); }
+    .btn-danger { background: var(--danger); color: white; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 6px; }
+
+    .user-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .user-item {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .status-badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .status-active { background: rgba(16, 185, 129, 0.2); color: var(--success); }
+    .status-blocked { background: rgba(239, 68, 68, 0.2); color: var(--danger); }
+    .status-expired { background: rgba(245, 158, 11, 0.2); color: var(--warning); }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.85);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 24px;
+      width: 100%;
+      max-width: 400px;
+      border: 1px solid var(--border);
+    }
+
+    /* Toasts */
+    .toast-container {
+      position: fixed;
+      top: 20px; right: 20px;
+      z-index: 2000;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .toast {
+      background: var(--card);
+      border-radius: 10px;
+      padding: 14px 20px;
+      min-width: 250px;
+      border-left: 4px solid var(--primary);
+      animation: slideIn 0.3s ease;
+      font-size: 13px;
+    }
+    .toast.success { border-left-color: var(--success); }
+    .toast.error { border-left-color: var(--danger); }
+    .toast.info { border-left-color: var(--warning); }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    .empty-state { text-align: center; padding: 40px 0; color: var(--text-muted); }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <nav class="navbar">
+      <h2>🌐 UDP by Meddix Pro — Web Portal</h2>
+      <span class="coins-badge" style="background: var(--success); color: black; font-weight: bold;">Active Port 200</span>
+    </nav>
+
+    <div class="dashboard-grid">
+      <!-- LEFT: Create Account -->
+      <div>
+        <div class="section">
+          <h2>Create User Account</h2>
+          <form id="create-user-form" onsubmit="createUser(event)">
+            <div class="form-group">
+              <label>Username</label>
+              <input type="text" id="reg-username" required placeholder="maddix_client">
+            </div>
+            <div class="form-group">
+              <label>Password</label>
+              <input type="text" id="reg-password" required placeholder="maddix123">
+            </div>
+            <div class="form-group">
+              <label>Duration Limit (e.g. 30d, 12h, 45m)</label>
+              <input type="text" id="reg-duration" required placeholder="30d">
+            </div>
+            <div class="form-group">
+              <label>Connection Limit</label>
+              <input type="number" id="reg-limit" required value="1" min="1">
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top: 8px;">Create UDP Account</button>
+          </form>
+        </div>
+      </div>
+
+      <!-- RIGHT: Users List -->
+      <div>
+        <div class="section">
+          <h2>Registered Client Tunnels</h2>
+          <div class="user-list" id="users-container">
+            <div class="empty-state">
+              <div class="icon">⏳</div>
+              <p>Loading active tunnels from /etc/passwd...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RENEW MODAL -->
+  <div class="modal-overlay" id="renew-modal">
+    <div class="modal">
+      <h3 style="margin-bottom: 8px;">Renew User Account</h3>
+      <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 18px;">Enter new high-precision duration for <strong id="renew-username-title">-</strong></p>
+      
+      <form id="renew-form" onsubmit="submitRenew(event)">
+        <input type="hidden" id="renew-username">
+        <div class="form-group">
+          <label>New Duration (e.g. 30d, 12h, 45m)</label>
+          <input type="text" id="renew-duration" required placeholder="30d">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('renew-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background: var(--success);">Renew Account</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast-container" id="toast-container"></div>
+
+  <script>
+    const API_URL = '';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadUsers();
+    });
+
+    async function loadUsers() {
+      try {
+        const res = await fetch(`${API_URL}/api/users`);
+        const data = await res.json();
+        const container = document.getElementById('users-container');
+
+        if (!data.users || data.users.length === 0) {
+          container.innerHTML = `
+            <div class="empty-state">
+              <div class="icon">👤</div>
+              <p>No custom UDP tunnel accounts registered yet.</p>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = data.users.map(u => {
+          let badgeClass = 'status-active';
+          let badgeText = u.remaining;
+
+          if (u.isExpired) {
+            badgeClass = 'status-expired';
+            badgeText = 'Expired';
+          } else if (u.isBlocked) {
+            badgeClass = 'status-blocked';
+            badgeText = 'Blocked';
+          }
+
+          return `
+            <div class="user-item">
+              <div>
+                <div style="font-weight: 700; font-size: 15px;">${u.username} <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">(Limit: ${u.limit})</span></div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Pass: <strong>${u.password}</strong> | Expiry: ${u.expDate}</div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span class="status-badge ${badgeClass}">${badgeText}</span>
+                <button class="btn btn-secondary btn-sm" onclick="openRenewModal('${u.username}')">Renew</button>
+                <button class="btn btn-secondary btn-sm" onclick="toggleBlock('${u.username}')" style="background: ${u.isBlocked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}; color: ${u.isBlocked ? 'var(--success)' : 'var(--warning)'}; border: none;">
+                  ${u.isBlocked ? 'Unlock' : 'Block'}
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">×</button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+      } catch (err) {
+        showToast('error', 'Load Failed', 'Failed to retrieve clients from server');
+      }
+    }
+
+    async function createUser(e) {
+      e.preventDefault();
+      const username = document.getElementById('reg-username').value.trim();
+      const password = document.getElementById('reg-password').value.trim();
+      const duration = document.getElementById('reg-duration').value.trim();
+      const limit = parseInt(document.getElementById('reg-limit').value, 10);
+
+      try {
+        const res = await fetch(`${API_URL}/api/users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, duration, limit })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Creation failed');
+
+        showToast('success', 'User Created', `Account "${username}" created successfully!`);
+        document.getElementById('create-user-form').reset();
+        loadUsers();
+      } catch (err) {
+        showToast('error', 'Error', err.message);
+      }
+    }
+
+    function openRenewModal(username) {
+      document.getElementById('renew-username').value = username;
+      document.getElementById('renew-username-title').textContent = username;
+      document.getElementById('renew-duration').value = '30d';
+      document.getElementById('renew-modal').classList.add('active');
+    }
+
+    async function submitRenew(e) {
+      e.preventDefault();
+      const username = document.getElementById('renew-username').value;
+      const duration = document.getElementById('renew-duration').value.trim();
+
+      try {
+        const res = await fetch(`${API_URL}/api/users/renew`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, duration })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showToast('success', 'User Renewed', `Account "${username}" extended successfully!`);
+        closeModal('renew-modal');
+        loadUsers();
+      } catch (err) {
+        showToast('error', 'Error', err.message);
+      }
+    }
+
+    async function toggleBlock(username) {
+      try {
+        const res = await fetch(`${API_URL}/api/users/block`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showToast('success', 'Status Updated', data.message);
+        loadUsers();
+      } catch (err) {
+        showToast('error', 'Error', err.message);
+      }
+    }
+
+    async function deleteUser(username) {
+      if (!confirm(`Are you sure you want to permanently delete user "${username}"?`)) return;
+
+      try {
+        const res = await fetch(`${API_URL}/api/users/${username}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showToast('success', 'User Deleted', `Account "${username}" permanently purged`);
+        loadUsers();
+      } catch (err) {
+        showToast('error', 'Error', err.message);
+      }
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    function showToast(type, title, message) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.innerHTML = `<h4>${title}</h4><p>${message}</p>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 4000);
+    }
+  </script>
+</body>
+</html>

@@ -23,6 +23,31 @@ sudo apt install -y wget
 sudo apt install -y curl
 sudo apt install -y dos2unix
 sudo apt install -y neofetch
+sudo apt install -y git
+
+# Install Node.js for our Web Portal
+if ! command -v node &> /dev/null; then
+    echo "📦 Installing Node.js..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get install -y nodejs
+fi
+
+# Install PM2 for background process execution
+if ! command -v pm2 &> /dev/null; then
+    echo "📦 Installing PM2..."
+    npm install -g pm2
+fi
+
+# Open Port 200 on Firewall
+echo "🛡️ Configuring Firewall (Opening Port 200 for Web Portal)..."
+if command -v ufw &> /dev/null; then
+    ufw allow 200/tcp || true
+    ufw reload || true
+    echo "✅ UFW allowed TCP Port 200"
+elif command -v iptables &> /dev/null; then
+    iptables -A INPUT -p tcp --dport 200 -j ACCEPT || true
+    echo "✅ Iptables allowed TCP Port 200"
+fi
 
 source <(curl -sSL 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/module')
 
@@ -117,16 +142,32 @@ else
   # [+menu+]
   wget -O /usr/bin/udp 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/udp' 
   chmod +x /usr/bin/udp
+
+  # [+Deploy Web Portal on Port 200+]
+  echo "📦 Deploying Web Portal on Port 200..."
+  rm -rf /etc/UDPCustom/web-portal
+  mkdir -p /etc/UDPCustom/web-portal
+  rm -rf /tmp/udp-by-meddix-pro
+  git clone https://github.com/maddix123/UDP-by-meddix-pro.git /tmp/udp-by-meddix-pro &>/dev/null
+  cp -r /tmp/udp-by-meddix-pro/web-portal/* /etc/UDPCustom/web-portal/
+  
+  cd /etc/UDPCustom/web-portal
+  npm install --legacy-peer-deps &>/dev/null
+  pm2 delete udp-web-portal 2>/dev/null || true
+  pm2 start server.js --name udp-web-portal
+  pm2 save &>/dev/null
+
   ufw disable &>/dev/null
-  sudo apt-get remove --purge ufw firewalld -y
-  apt remove netfilter-persistent -y
+  sudo apt-get remove --purge ufw firewalld -y &>/dev/null
+  apt remove netfilter-persistent -y &>/dev/null
   clear
   echo ""
   echo ""
   print_center -ama "${a103:-setting up, please wait...}"
   sleep 3
   title "${a102:-Installation Successful}"
-  print_center -ama "${a103:-  To show menu type: \nudp\n}"
+  print_center -ama "To show CLI menu type: udp\n"
+  print_center -ama "Web Portal URL: http://your-ip:200\n"
   msg -bar
   time_reboot 5
 fi

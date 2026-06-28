@@ -10,6 +10,8 @@ UDP (User Datagram Protocol) is a high-speed network communication protocol that
 
 ## ⚡ Premium Enhancements in this Version:
 
+* **🖥️ Beautiful Web Portal Admin Panel:** Added a fully-integrated **Web Dashboard running on Port 200**! Manage your clients from any web browser (mobile or desktop). Supports real-time client tables, additions, renewals, blocks, and permanent purges cleanly.
+* **🔓 Port 200 Firewall Integration:** Automated installer rules that open Port 200 on the firewall (`ufw` or `iptables`) by default.
 * **🛑 Instant Active Session Disconnections:** When a client's time is done, the server doesn't just lock the account—it **instantly force-terminates all active tunneling processes, sockets, and dropbear sessions** associated with that user (`pkill -9 -u`), kicking them off the server immediately!
 * **⏱️ High-Precision Expiration Rates:** Support for specifying client durations in **Days (`d`)**, **Hours (`h`)**, and **Minutes (`m`)**!
   * Example: `30d` (30 Days), `12h` (12 Hours), `45m` (45 Minutes).
@@ -19,7 +21,7 @@ UDP (User Datagram Protocol) is a high-speed network communication protocol that
 
 ## 🚀 One-Line Installation
 
-Copy and paste this **single command** into your Ubuntu server terminal to install, configure, and run the UDP-Custom service on your server:
+Copy and paste this **single command** into your Ubuntu server terminal to install, configure, open Port 200, start the Web Portal, and run the UDP-Custom service:
 
 ```bash
 sudo -s
@@ -27,6 +29,12 @@ sudo -s
 ```bash
 wget "https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/install.sh" -O install.sh && chmod +x install.sh && ./install.sh
 ```
+
+---
+
+## 🌐 Web Portal Details:
+* Access your clean Web Admin Portal from any device at:
+  👉 **`http://your-server-ip:200`**
 
 ---
 
