@@ -226,9 +226,9 @@ async function sendClientReminderEmail(username, email, daysLeft, expDateString)
   try {
     const clientHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
-        <h2 style="text-align: center; color: #f59e0b; border-bottom: 2px solid #24314f; padding-bottom: 12px;">⚠️ Account Expiration Notice</h2>
-        <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6;">Hello <strong>${username}</strong>,</p>
-        <p style="font-size: 14px; line-height: 1.5; color: #9ca3af; margin-top: 10px;">
+        <h2 style="text-align: center; color: #f59e0b; border-bottom: 2px solid #24314f; padding-bottom: 12px;">📵 Expiration Notice: Meddix Pro</h2>
+        <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6; margin-top: 16px;">Hello <strong>${username}</strong>,</p>
+        <p style="font-size: 14px; line-height: 1.6; color: #9ca3af; margin-top: 10px;">
           This is an automated reminder that your high-speed **UDP Custom Tunnel Account** is expiring soon.
         </p>
         
@@ -239,7 +239,7 @@ async function sendClientReminderEmail(username, email, daysLeft, expDateString)
         </div>
         
         <p style="font-size: 14px; line-height: 1.5; color: #9ca3af;">
-          To avoid service interruption and preserve your active sessions, please contact the administrator at <a href="mailto:ahmedmutumba@gmail.com" style="color: #4f46e5;">ahmedmutumba@gmail.com</a> to renew your account before it expires.
+          To avoid service interruption and preserve your active sessions, please contact the administrator at <a href="mailto:ahmedmutumba@gmail.com" style="color: #4f46e5; text-decoration: none;">ahmedmutumba@gmail.com</a> to renew your account before it expires.
         </p>
         
         <div style="text-align: center; margin-top: 30px; font-size: 11px; color: #9ca3af; border-top: 1px dashed #24314f; padding-top: 12px;">
@@ -262,25 +262,21 @@ async function sendClientReminderEmail(username, email, daysLeft, expDateString)
 }
 
 // 🔥 INSTANT WELCOME EMAIL GENERATOR ON ACCOUNT CREATION
-async function sendClientWelcomeEmail(username, email, password, duration, limit, expDateString, serverIp) {
+async function sendClientWelcomeEmail(username, email, daysLeft, expDateString) {
   try {
-    const configSettings = getSettings();
-    const welcomeText = configSettings.welcomeMessage || DEFAULT_WELCOME_MSG;
-    const profileLine = `${serverIp}:1-65535@${username}:${password}`;
-
-    const welcomeHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
+    const clientHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
         <h2 style="text-align: center; color: #4f46e5; border-bottom: 2px solid #24314f; padding-bottom: 12px;">🎉 Welcome to Meddix Pro VPN Service</h2>
         <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6; margin-top: 16px;">Hello <strong>${username}</strong>,</p>
         <p style="font-size: 14px; line-height: 1.6; color: #d1d5db; margin-top: 10px;">
-          ${welcomeText}
+          ${getSettings().welcomeMessage || DEFAULT_WELCOME_MSG}
         </p>
         
         <h3 style="color: #10b981; margin-top: 24px; border-bottom: 1px solid #24314f; padding-bottom: 6px; font-size: 14px; text-transform: uppercase;">📋 Your Tunnel Credentials</h3>
         <div style="background: #151d30; border-radius: 8px; padding: 16px; margin: 12px 0; border: 1px solid #24314f; font-family: monospace; font-size: 13px;">
           <div style="margin-bottom: 6px;">👤 Username: <strong>${username}</strong></div>
           <div style="margin-bottom: 6px;">🔑 Password: <strong>${password}</strong></div>
-          <div style="margin-bottom: 6px;">⏱️ Duration: <strong>${duration}</strong></div>
+          <div style="margin-bottom: 6px;">⏱️ Duration: <strong>${daysLeft}</strong></div>
           <div style="margin-bottom: 6px;">📅 Expiration: <strong>${expDateString}</strong></div>
           <div>💻 Limit: <strong>${limit} concurrent connections</strong></div>
         </div>
@@ -288,7 +284,7 @@ async function sendClientWelcomeEmail(username, email, password, duration, limit
         <h3 style="color: #4f46e5; margin-top: 24px; border-bottom: 1px solid #24314f; padding-bottom: 6px; font-size: 14px; text-transform: uppercase;">🚀 HTTP Custom Profile</h3>
         <p style="font-size: 13px; color: #9ca3af; margin-bottom: 8px;">Copy the connection profile line below and paste it directly into your HTTP Custom application:</p>
         <div style="background: #0b0f19; border: 1px solid #24314f; border-radius: 8px; padding: 12px 14px; font-family: monospace; font-size: 13px; color: #4f46e5; word-break: break-all;">
-          ${profileLine}
+          ${serverIp}:1-65535@${username}:${password}
         </div>
         
         <p style="font-size: 13px; line-height: 1.5; color: #9ca3af; margin-top: 20px;">
@@ -498,6 +494,56 @@ app.post('/api/users', async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// POST /api/users/update-details - Update client Email & Phone (For existing clients!)
+app.post('/api/users/update-details', async (req, res) => {
+  try {
+    const { username, email, phone } = req.body;
+    if (!username) return res.status(400).json({ error: 'Username is required' });
+
+    // Verify if user exists
+    const existing = await execPromise(`id -u ${username} &>/dev/null && echo "exists" || true`);
+    if (existing !== 'exists') return res.status(404).json({ error: 'User not found on the system' });
+
+    let expTimestamp = Math.floor(Date.now() / 1000) + (30 * 86400); // default 30 days fallback
+    const expFile = `/etc/UDPCustom/expiration/${username}`;
+
+    if (fs.existsSync(expFile)) {
+      try {
+        const rawContent = fs.readFileSync(expFile, 'utf8').trim();
+        if (rawContent.startsWith('{')) {
+          const data = JSON.parse(rawContent);
+          expTimestamp = data.expTimestamp;
+        } else {
+          expTimestamp = parseInt(rawContent, 10) || expTimestamp;
+        }
+      } catch (e) {}
+    } else {
+      // Fallback from system chage
+      const chageRaw = await execPromise(`chage -l ${username} | sed -n '4p' | awk -F ': ' '{print $2}'`).catch(() => '');
+      if (chageRaw) {
+        const expMs = Date.parse(chageRaw);
+        if (!isNaN(expMs)) {
+          expTimestamp = Math.floor(expMs / 1000);
+        }
+      }
+    }
+
+    // Save updated metadata JSON
+    const metadata = {
+      expTimestamp,
+      email: email || '',
+      phone: phone || ''
+    };
+    fs.mkdirSync('/etc/UDPCustom/expiration', { recursive: true });
+    fs.writeFileSync(expFile, JSON.stringify(metadata, null, 2));
+
+    res.json({ message: 'User details updated successfully!', username, email, phone });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to update user details' });
   }
 });
 

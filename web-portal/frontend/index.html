@@ -307,6 +307,30 @@
     </div>
   </div>
 
+  <!-- EDIT DETAILS MODAL -->
+  <div class="modal-overlay" id="edit-modal">
+    <div class="modal">
+      <h3 style="margin-bottom: 8px;">Edit Client Details</h3>
+      <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 18px;">Modify contact details for <strong id="edit-username-title">-</strong></p>
+      
+      <form id="edit-form" onsubmit="submitEdit(event)">
+        <input type="hidden" id="edit-username">
+        <div class="form-group">
+          <label>Client Email (Optional)</label>
+          <input type="email" id="edit-email" placeholder="client@gmail.com">
+        </div>
+        <div class="form-group">
+          <label>Client Phone (Optional)</label>
+          <input type="text" id="edit-phone" placeholder="+2567...">
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal('edit-modal')">Cancel</button>
+          <button type="submit" class="btn btn-primary" style="background: var(--success);">Save Details</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="toast-container" id="toast-container"></div>
 
   <script>
@@ -395,6 +419,7 @@
                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                   <span class="status-badge ${badgeClass}">${badgeText}</span>
                   <button class="btn btn-secondary btn-sm" onclick="openRenewModal('${u.username}')">Renew</button>
+                  <button class="btn btn-secondary btn-sm" onclick="openEditModal('${u.username}', '${u.clientEmail}', '${u.clientPhone}')" style="background: rgba(79, 70, 229, 0.15); border: 1px solid var(--primary); color: #fff;">Edit</button>
                   <button class="btn btn-secondary btn-sm" onclick="toggleBlock('${u.username}')" style="background: ${u.isBlocked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}; color: ${u.isBlocked ? 'var(--success)' : 'var(--warning)'}; border: none;">
                     ${u.isBlocked ? 'Unlock' : 'Block'}
                   </button>
@@ -471,6 +496,37 @@
 
         showToast('success', 'User Renewed', `Account "${username}" extended successfully!`);
         closeModal('renew-modal');
+        loadUsers();
+      } catch (err) {
+        showToast('error', 'Error', err.message);
+      }
+    }
+
+    function openEditModal(username, email, phone) {
+      document.getElementById('edit-username').value = username;
+      document.getElementById('edit-username-title').textContent = username;
+      document.getElementById('edit-email').value = (email && email !== 'undefined' && email !== 'null') ? email : '';
+      document.getElementById('edit-phone').value = (phone && phone !== 'undefined' && phone !== 'null') ? phone : '';
+      document.getElementById('edit-modal').classList.add('active');
+    }
+
+    async function submitEdit(e) {
+      e.preventDefault();
+      const username = document.getElementById('edit-username').value;
+      const email = document.getElementById('edit-email').value.trim();
+      const phone = document.getElementById('edit-phone').value.trim();
+
+      try {
+        const res = await fetch(`${API_URL}/api/users/update-details`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, phone })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showToast('success', 'Details Saved', `Client "${username}" contact details updated successfully!`);
+        closeModal('edit-modal');
         loadUsers();
       } catch (err) {
         showToast('error', 'Error', err.message);
