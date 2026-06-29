@@ -444,7 +444,7 @@
                   <span class="status-badge ${badgeClass}">${badgeText}</span>
                   <button class="btn btn-secondary btn-sm" onclick="openRenewModal('${u.username}')">Renew</button>
                   <button class="btn btn-secondary btn-sm" onclick="openEditModal('${u.username}')" style="background: rgba(79, 70, 229, 0.15); border: 1px solid var(--primary); color: #fff;">Edit</button>
-                  <button class="btn btn-secondary btn-sm" onclick="toggleBlock('${u.username}')" style="background: ${u.isBlocked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}; color: ${u.isBlocked ? 'var(--success)' : 'var(--warning)'}; border: none;">
+                  <button class="btn btn-secondary btn-sm" onclick="toggleBlock('${u.username}')" style="background: ${u.isBlocked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}; color: ${u.isBlocked ? 'var(--success)' : 'var(--warning)'}; border: none;">
                     ${u.isBlocked ? 'Unlock' : 'Block'}
                   </button>
                   <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">×</button>
@@ -532,8 +532,8 @@
 
       document.getElementById('edit-username').value = username;
       document.getElementById('edit-username-title').textContent = username;
-      document.getElementById('edit-email').value = u.clientEmail || '';
-      document.getElementById('edit-phone').value = u.clientPhone || '';
+      document.getElementById('edit-email').value = (u.clientEmail && u.clientEmail !== 'undefined' && u.clientEmail !== 'null') ? u.clientEmail : '';
+      document.getElementById('edit-phone').value = (u.clientPhone && u.clientPhone !== 'undefined' && u.clientPhone !== 'null') ? u.clientPhone : '';
       document.getElementById('edit-modal').classList.add('active');
     }
 
