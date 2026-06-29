@@ -66,18 +66,18 @@ async function getUserBandwidth(username) {
     if (!uid) return { upload: 0, download: 0, total: 0 };
 
     // Downlink (Data sent from server to client - OUTPUT rules)
-    const iptablesOutput = await execPromise(`iptables -L OUTPUT -v -n -x | grep "owner UID match ${uid}" || true`);
+    const iptablesOutput = await execPromise(`iptables -L OUTPUT -v -n -x | grep -i "${uid}" || true`);
     let downloadBytes = 0;
     if (iptablesOutput) {
-      const parts = iptablesOutput.trim().split(/\s+/);
+      const parts = iptablesOutput.trim().split('\n')[0].trim().split(/\s+/);
       downloadBytes = parseInt(parts[1], 10) || 0;
     }
 
     // Uplink (Data received by server from client - INPUT rules)
-    const iptablesInput = await execPromise(`iptables -L INPUT -v -n -x | grep "owner UID match ${uid}" || true`);
+    const iptablesInput = await execPromise(`iptables -L INPUT -v -n -x | grep -i "${uid}" || true`);
     let uploadBytes = 0;
     if (iptablesInput) {
-      const parts = iptablesInput.trim().split(/\s+/);
+      const parts = iptablesInput.trim().split('\n')[0].trim().split(/\s+/);
       uploadBytes = parseInt(parts[1], 10) || 0;
     }
 
@@ -621,6 +621,10 @@ app.get('/api/users', async (req, res) => {
           }
         }
       }
+
+      // 🔥 AUTOMATED ON-THE-FLY IPTABLES RULE ASSURANCE FOR ALL USERS (Prevents empty 0.00 GB counts!)
+      await execPromise(`iptables -C OUTPUT -m owner --uid-owner "${username}" -j ACCEPT &>/dev/null || iptables -I OUTPUT -m owner --uid-owner "${username}" -j ACCEPT`).catch(() => {});
+      await execPromise(`iptables -C INPUT -m owner --uid-owner "${username}" -j ACCEPT &>/dev/null || iptables -I INPUT -m owner --uid-owner "${username}" -j ACCEPT`).catch(() => {});
 
       // Convert daily bytes used to formatted string (e.g. 1.25 GB / 2.00 GB)
       const formattedBytes = (dailyBytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';

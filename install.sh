@@ -9,6 +9,16 @@
 
 #=== setup ===
 cd 
+
+# 🔥 SAFE-GUARD: Backup existing user details before wiping the directories
+echo "💾 Backing up existing user expiration & contact details..."
+rm -rf /tmp/udp_expiration_backup
+if [ -d "/etc/UDPCustom/expiration" ]; then
+    mkdir -p /tmp/udp_expiration_backup
+    cp -r /etc/UDPCustom/expiration/* /tmp/udp_expiration_backup/
+    echo "✅ Backup completed successfully!"
+fi
+
 rm -rf /root/udp
 mkdir -p /root/udp
 rm -rf /etc/UDPCustom
@@ -151,6 +161,15 @@ else
   git clone https://github.com/maddix123/UDP-by-meddix-pro.git /tmp/udp-by-meddix-pro &>/dev/null
   cp -r /tmp/udp-by-meddix-pro/web-portal/* /etc/UDPCustom/web-portal/
   
+  # 🔥 RESTORE: Safely restore their pre-filled client details from backup
+  if [ -d "/tmp/udp_expiration_backup" ]; then
+      echo "♻️ Restoring your existing user expiration & contact details..."
+      mkdir -p /etc/UDPCustom/expiration
+      cp -r /tmp/udp_expiration_backup/* /etc/UDPCustom/expiration/
+      rm -rf /tmp/udp_expiration_backup
+      echo "✅ Restore completed successfully!"
+  fi
+
   cd /etc/UDPCustom/web-portal
   npm install --legacy-peer-deps &>/dev/null
   pm2 delete udp-web-portal 2>/dev/null || true
