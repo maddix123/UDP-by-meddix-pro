@@ -709,8 +709,18 @@ app.get('/api/users', async (req, res) => {
       await execPromise(`iptables -C OUTPUT -m owner --uid-owner "${username}" -j ACCEPT &>/dev/null || iptables -I OUTPUT -m owner --uid-owner "${username}" -j ACCEPT`).catch(() => {});
       await execPromise(`iptables -C INPUT -m owner --uid-owner "${username}" -j ACCEPT &>/dev/null || iptables -I INPUT -m owner --uid-owner "${username}" -j ACCEPT`).catch(() => {});
 
-      // Convert daily bytes used to formatted string (e.g. 1.25 GB / 2.00 GB)
-      const formattedBytes = (dailyBytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+      // Convert daily bytes used to dynamic formatted string (e.g. 15.50 MB or 1.25 GB)
+      let formattedBytes = '';
+      if (dailyBytes < 1048576) {
+        // Less than 1 MB, show in KB
+        formattedBytes = (dailyBytes / 1024).toFixed(2) + ' KB';
+      } else if (dailyBytes < 1073741824) {
+        // Less than 1 GB, show in MB
+        formattedBytes = (dailyBytes / (1024 * 1024)).toFixed(2) + ' MB';
+      } else {
+        // 1 GB or more, show in GB
+        formattedBytes = (dailyBytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+      }
 
       users.push({
         username,
