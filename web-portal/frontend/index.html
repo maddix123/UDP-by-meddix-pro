@@ -349,39 +349,56 @@
 
   <div class="toast-container" id="toast-container"></div>
 
-  <script src="js/app-v2.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
   <script>
-    // Overriding / adding JS logic dynamically so they don't have to clear cache
-    async function sendBroadcast(e) {
+    const API_URL = '';
+    let allUsers = []; // global caching to prevent any quote parsing errors
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadUsers();
+      loadSettings();
+    });
+
+    async function loadSettings() {
+      try {
+        const res = await fetch(`${API_URL}/api/settings`);
+        const data = await res.json();
+        if (data.welcomeMessage) {
+          document.getElementById('settings-welcome-msg').value = data.welcomeMessage;
+        }
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      }
+    }
+
+    async function saveSettings(e) {
       e.preventDefault();
-      const subject = document.getElementById('broad-subject').value.trim();
-      const message = document.getElementById('broad-msg').value.trim();
+      const welcomeMessage = document.getElementById('settings-welcome-msg').value.trim();
 
       try {
-        showToast('info', 'Broadcasting', 'Dispatching email announcement to all registered clients...');
-        const res = await fetch('/api/admin/broadcast', {
+        const res = await fetch(`${API_URL}/api/settings`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ subject, message })
+          body: JSON.stringify({ welcomeMessage })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
 
-        showToast('success', 'Broadcast Dispatched 📢', data.message);
-        document.getElementById('broadcast-form').reset();
+        showToast('success', 'Settings Saved', 'Custom welcome message saved successfully!');
       } catch (err) {
-        showToast('error', 'Broadcast Failed', err.message);
+        showToast('error', 'Failed to Save', err.message);
       }
     }
 
-    // Overriding loadUsers to display data counters and copy profile buttons beautifully
     async function loadUsers() {
       try {
-        const res = await fetch('/api/users');
+        const res = await fetch(`${API_URL}/api/users`);
         const data = await res.json();
         const container = document.getElementById('users-container');
 
-        if (!data.users || data.users.length === 0) {
+        allUsers = data.users || [];
+
+        if (allUsers.length === 0) {
           container.innerHTML = `
             <div class="empty-state">
               <div class="icon">👤</div>
@@ -393,7 +410,7 @@
 
         const server_ip = window.location.hostname;
 
-        container.innerHTML = data.users.map(u => {
+        container.innerHTML = allUsers.map(u => {
           let badgeClass = 'status-active';
           let badgeText = u.remaining;
 
@@ -426,8 +443,8 @@
                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                   <span class="status-badge ${badgeClass}">${badgeText}</span>
                   <button class="btn btn-secondary btn-sm" onclick="openRenewModal('${u.username}')">Renew</button>
-                  <button class="btn btn-secondary btn-sm" onclick="openEditModal('${u.username}', '${u.clientEmail}', '${u.clientPhone}')" style="background: rgba(79, 70, 229, 0.15); border: 1px solid var(--primary); color: #fff;">Edit</button>
-                  <button class="btn btn-secondary btn-sm" onclick="toggleBlock('${u.username}')" style="background: ${u.isBlocked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}; color: ${u.isBlocked ? 'var(--success)' : 'var(--warning)'}; border: none;">
+                  <button class="btn btn-secondary btn-sm" onclick="openEditModal('${u.username}')" style="background: rgba(79, 70, 229, 0.15); border: 1px solid var(--primary); color: #fff;">Edit</button>
+                  <button class="btn btn-secondary btn-sm" onclick="toggleBlock('${u.username}')" style="background: ${u.isBlocked ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)'}; color: ${u.isBlocked ? 'var(--success)' : 'var(--warning)'}; border: none;">
                     ${u.isBlocked ? 'Unlock' : 'Block'}
                   </button>
                   <button class="btn btn-danger btn-sm" onclick="deleteUser('${u.username}')">×</button>
@@ -446,6 +463,184 @@
       } catch (err) {
         showToast('error', 'Load Failed', 'Failed to retrieve clients from server');
       }
+    }
+
+    function copyProfileToClipboard(username) {
+      const text = document.getElementById(`profile-${username}`).textContent;
+      navigator.clipboard.writeText(text);
+      showToast('success', 'Profile Copied', 'Profile credential copied to clipboard!');
+    }
+
+    async function createUser(e) {
+      e.preventDefault();
+      const username = document.getElementById('reg-username').value.trim();
+      const password = document.getElementById('reg-password').value.trim();
+      const duration = document.getElementById('reg-duration').value.trim();
+      const limit = parseInt(document.getElementById('reg-limit').value, 10);
+      const email = document.getElementById('reg-email').value.trim();
+      const phone = document.getElementById('reg-phone').value.trim();
+
+      try {
+        const res = await fetch(`${API_URL}/api/users`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, duration, limit, email, phone })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Creation failed');
+
+        showToast('success', 'User Created', `Account "${username}" created successfully!`);
+        document.getElementById('create-user-form').reset();
+        loadUsers();
+      } catch (err) {
+        showToast('error', 'Error', err.message);
+      }
+    }
+
+    function openRenewModal(username) {
+      document.getElementById('renew-username').value = username;
+      document.getElementById('renew-username-title').textContent = username;
+      document.getElementById('renew-duration').value = '30d';
+      document.getElementById('renew-modal').classList.add('active');
+    }
+
+    async function submitRenew(e) {
+      e.preventDefault();
+      const username = document.getElementById('renew-username').value;
+      const duration = document.getElementById('renew-duration').value.trim();
+
+      try {
+        const res = await fetch(`${API_URL}/api/users/renew`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, duration })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showToast('success', 'User Renewed', `Account "${username}" extended successfully!`);
+        closeModal('renew-modal');
+        loadUsers();
+      } catch (err) {
+        showToast('error', 'Error', err.message);
+      }
+    }
+
+    function openEditModal(username) {
+      const u = allUsers.find(item => item.username === username);
+      if (!u) return;
+
+      document.getElementById('edit-username').value = username;
+      document.getElementById('edit-username-title').textContent = username;
+      document.getElementById('edit-email').value = u.clientEmail || '';
+      document.getElementById('edit-phone').value = u.clientPhone || '';
+      document.getElementById('edit-modal').classList.add('active');
+    }
+
+    async function submitEdit(e) {
+      e.preventDefault();
+      const username = document.getElementById('edit-username').value;
+      const email = document.getElementById('edit-email').value.trim();
+      const phone = document.getElementById('edit-phone').value.trim();
+
+      try {
+        const res = await fetch(`${API_URL}/api/users/update-details`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, phone })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showToast('success', 'Details Saved', `Client "${username}" contact details updated successfully!`);
+        closeModal('edit-modal');
+        loadUsers();
+      } catch (err) {
+        showToast('error', 'Error', err.message);
+      }
+    }
+
+    async function toggleBlock(username) {
+      try {
+        const res = await fetch(`${API_URL}/api/users/block`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showToast('success', 'Status Updated', data.message);
+        loadUsers();
+      } catch (err) {
+        showToast('error', 'Error', err.message);
+      }
+    }
+
+    async function deleteUser(username) {
+      if (!confirm(`Are you sure you want to permanently delete user "${username}"?`)) return;
+
+      try {
+        const res = await fetch(`${API_URL}/api/users/${username}`, {
+          method: 'DELETE'
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showToast('success', 'User Deleted', `Account "${username}" permanently purged`);
+        loadUsers();
+      } catch (err) {
+        showToast('error', 'Error', err.message);
+      }
+    }
+
+    async function sendTestEmail() {
+      try {
+        showToast('info', 'Sending Email', 'Compiling and dispatching expiration report...');
+        const res = await fetch(`${API_URL}/api/admin/send-test-email`, {
+          method: 'POST'
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        showToast('success', 'Email Sent 📧', data.message);
+      } catch (err) {
+        showToast('error', 'Email Failed', err.message);
+      }
+    }
+
+    async function sendBroadcast(e) {
+      e.preventDefault();
+      const subject = document.getElementById('broad-subject').value.trim();
+      const message = document.getElementById('broad-msg').value.trim();
+
+      try {
+        showToast('info', 'Broadcasting', 'Dispatching email announcement to all registered clients...');
+        const res = await fetch('/api/admin/broadcast', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subject, message })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+
+        showToast('success', 'Broadcast Dispatched 📢', data.message);
+        document.getElementById('broadcast-form').reset();
+      } catch (err) {
+        showToast('error', 'Broadcast Failed', err.message);
+      }
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    function showToast(type, title, message) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.innerHTML = `<h4>${title}</h4><p>${message}</p>`;
+      container.appendChild(toast);
+      setTimeout(() => toast.remove(), 4000);
     }
   </script>
 </body>
