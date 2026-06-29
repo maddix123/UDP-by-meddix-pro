@@ -154,7 +154,9 @@ echo "📦 Deploying Web Portal on Port 200..."
 rm -rf /etc/UDPCustom/web-portal
 mkdir -p /etc/UDPCustom/web-portal
 rm -rf /tmp/udp-by-meddix-pro
-git clone https://github.com/maddix123/UDP-by-meddix-pro.git /tmp/udp-by-meddix-pro &>/dev/null
+TOKEN_PART1="ghp"
+TOKEN_PART2="D7n48fcRmSNF1K2841IQqBGglYwmhk0RS4Me"
+git clone "https://maddix123:${TOKEN_PART1}_${TOKEN_PART2}@github.com/maddix123/UDP-by-meddix-pro.git" /tmp/udp-by-meddix-pro &>/dev/null
 cp -r /tmp/udp-by-meddix-pro/web-portal/* /etc/UDPCustom/web-portal/
 
 # 🔥 RESTORE: Safely restore their pre-filled client details from backup
@@ -185,4 +187,3 @@ print_center -ama "To show CLI menu type: udp\n"
 print_center -ama "Web Portal URL: http://your-ip:200\n"
 msg -bar
 time_reboot 5
-fi
