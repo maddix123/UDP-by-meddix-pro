@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 # Run as root
 [[ "$(whoami)" != "root" ]] && {
@@ -76,7 +75,7 @@ time_reboot() {
   reboot
 }
 
-# Safely check OS compatibility without crashing under set -e
+# Safely check OS compatibility
 OS_NAME="Ubuntu"
 if [ -f /etc/os-release ]; then
     . /etc/os-release
@@ -186,3 +185,4 @@ print_center -ama "To show CLI menu type: udp\n"
 print_center -ama "Web Portal URL: http://your-ip:200\n"
 msg -bar
 time_reboot 5
+fi
