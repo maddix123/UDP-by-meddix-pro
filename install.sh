@@ -1,9 +1,9 @@
 #!/bin/bash
+set -e
 
 # Run as root
 [[ "$(whoami)" != "root" ]] && {
     echo -e "\033[1;33m[\033[1;31mErro\033[1;33m] \033[1;37m- \033[1;33myou need to run as root\033[0m"
-    rm /home/ubuntu/install.sh &>/dev/null
     exit 0
 }
 
@@ -76,117 +76,113 @@ time_reboot() {
   reboot
 }
 
-# Check Ubuntu version
-if [ "$(lsb_release -rs)" = "8*|9*|10*|11*|16.04*|18.04*" ]; then
-  clear
-  print_center -ama -e "\e[1m\e[31m=====================================================\e[0m"
-  print_center -ama -e "\e[1m\e[33m${a94:-this script is not compatible with your operating system}\e[0m"
-  print_center -ama -e "\e[1m\e[33m ${a95:-Use Ubuntu 20 or higher}\e[0m"
-  print_center -ama -e "\e[1m\e[31m=====================================================\e[0m"
-  rm /home/ubuntu/install.sh
-  exit 1
-else
-  clear
-  echo ""
-  print_center -ama "A Compatible OS/Environment Found"
-  print_center -ama " ⇢ Installation begins...! <"
-  sleep 3
-
-    # [change timezone to UTC +0]
-  echo ""
-  echo " ⇢ Change timezone to UTC +0"
-  echo " ⇢ for Africa/Accra [GH] GMT +00:00"
-  ln -fs /usr/share/zoneinfo/Africa/Accra /etc/localtime
-  sleep 3
-
-  # [+clean up+]
-  rm -rf $udp_file &>/dev/null
-  rm -rf /etc/UDPCustom/udp-custom &>/dev/null
-  rm -rf /etc/limiter.sh &>/dev/null
-  rm -rf /etc/UDPCustom/limiter.sh &>/dev/null
-  rm -rf /etc/UDPCustom/module &>/dev/null
-  rm -rf /usr/bin/udp &>/dev/null
-  rm -rf /etc/UDPCustom/udpgw.service &>/dev/null
-  rm -rf /etc/udpgw.service &>/dev/null
-  systemctl stop udpgw &>/dev/null
-  systemctl stop udp-custom &>/dev/null
-
- # [+get files ⇣⇣⇣+]
-  source <(curl -sSL 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/module') &>/dev/null
-  wget -O /etc/UDPCustom/module 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/module' &>/dev/null
-  chmod +x /etc/UDPCustom/module
-
-  wget "https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/bin/udp-custom-linux-amd64" -O /root/udp/udp-custom &>/dev/null
-  chmod +x /root/udp/udp-custom
-
-  wget -O /etc/limiter.sh 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/limiter.sh'
-  cp /etc/limiter.sh /etc/UDPCustom
-  chmod +x /etc/limiter.sh
-  chmod +x /etc/UDPCustom
-  
-  # [+udpgw+]
-  wget -O /etc/udpgw 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/udpgw'
-  mv /etc/udpgw /bin
-  chmod +x /bin/udpgw
-
-  # [+service+]
-  wget -O /etc/udpgw.service 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/config/udpgw.service'
-  wget -O /etc/udp-custom.service 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/config/udp-custom.service'
-  
-  mv /etc/udpgw.service /etc/systemd/system
-  mv /etc/udp-custom.service /etc/systemd/system
-
-  chmod 640 /etc/systemd/system/udpgw.service
-  chmod 640 /etc/systemd/system/udp-custom.service
-  
-  systemctl daemon-reload &>/dev/null
-  systemctl enable udpgw &>/dev/null
-  systemctl start udpgw &>/dev/null
-  systemctl enable udp-custom &>/dev/null
-  systemctl start udp-custom &>/dev/null
-
-  # [+config+]
-  wget "https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/config/config.json" -O /root/udp/config.json &>/dev/null
-  chmod +x /root/udp/config.json
-
-  # [+menu+]
-  wget -O /usr/bin/udp 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/udp' 
-  chmod +x /usr/bin/udp
-
-  # [+Deploy Web Portal on Port 200+]
-  echo "📦 Deploying Web Portal on Port 200..."
-  rm -rf /etc/UDPCustom/web-portal
-  mkdir -p /etc/UDPCustom/web-portal
-  rm -rf /tmp/udp-by-meddix-pro
-  git clone https://github.com/maddix123/UDP-by-meddix-pro.git /tmp/udp-by-meddix-pro &>/dev/null
-  cp -r /tmp/udp-by-meddix-pro/web-portal/* /etc/UDPCustom/web-portal/
-  
-  # 🔥 RESTORE: Safely restore their pre-filled client details from backup
-  if [ -d "/tmp/udp_expiration_backup" ]; then
-      echo "♻️ Restoring your existing user expiration & contact details..."
-      mkdir -p /etc/UDPCustom/expiration
-      cp -r /tmp/udp_expiration_backup/* /etc/UDPCustom/expiration/
-      rm -rf /tmp/udp_expiration_backup
-      echo "✅ Restore completed successfully!"
-  fi
-
-  cd /etc/UDPCustom/web-portal
-  npm install --legacy-peer-deps &>/dev/null
-  pm2 delete udp-web-portal 2>/dev/null || true
-  pm2 start server.js --name udp-web-portal
-  pm2 save &>/dev/null
-
-  ufw disable &>/dev/null
-  sudo apt-get remove --purge ufw firewalld -y &>/dev/null
-  apt remove netfilter-persistent -y &>/dev/null
-  clear
-  echo ""
-  echo ""
-  print_center -ama "${a103:-setting up, please wait...}"
-  sleep 3
-  title "${a102:-Installation Successful}"
-  print_center -ama "To show CLI menu type: udp\n"
-  print_center -ama "Web Portal URL: http://your-ip:200\n"
-  msg -bar
-  time_reboot 5
+# Safely check OS compatibility without crashing under set -e
+OS_NAME="Ubuntu"
+if [ -f /etc/os-release ]; then
+    . /etc/os-release
+    OS_NAME=$NAME
 fi
+
+clear
+echo ""
+print_center -ama "A Compatible OS/Environment Found: $OS_NAME"
+print_center -ama " ⇢ Installation begins...! <"
+sleep 3
+
+# [change timezone to UTC +0]
+echo ""
+echo " ⇢ Change timezone to UTC +0"
+echo " ⇢ for Africa/Accra [GH] GMT +00:00"
+ln -fs /usr/share/zoneinfo/Africa/Accra /etc/localtime
+sleep 3
+
+# [+clean up+]
+rm -rf $udp_file &>/dev/null
+rm -rf /etc/UDPCustom/udp-custom &>/dev/null
+rm -rf /etc/limiter.sh &>/dev/null
+rm -rf /etc/UDPCustom/limiter.sh &>/dev/null
+rm -rf /etc/UDPCustom/module &>/dev/null
+rm -rf /usr/bin/udp &>/dev/null
+rm -rf /etc/UDPCustom/udpgw.service &>/dev/null
+rm -rf /etc/udpgw.service &>/dev/null
+systemctl stop udpgw &>/dev/null
+systemctl stop udp-custom &>/dev/null
+
+# [+get files ⇣⇣⇣+]
+source <(curl -sSL 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/module') &>/dev/null
+wget -O /etc/UDPCustom/module 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/module' &>/dev/null
+chmod +x /etc/UDPCustom/module
+
+wget "https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/bin/udp-custom-linux-amd64" -O /root/udp/udp-custom &>/dev/null
+chmod +x /root/udp/udp-custom
+
+wget -O /etc/limiter.sh 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/limiter.sh'
+cp /etc/limiter.sh /etc/UDPCustom
+chmod +x /etc/limiter.sh
+chmod +x /etc/UDPCustom
+
+# [+udpgw+]
+wget -O /etc/udpgw 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/udpgw'
+mv /etc/udpgw /bin
+chmod +x /bin/udpgw
+
+# [+service+]
+wget -O /etc/udpgw.service 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/config/udpgw.service'
+wget -O /etc/udp-custom.service 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/config/udp-custom.service'
+
+mv /etc/udpgw.service /etc/systemd/system
+mv /etc/udp-custom.service /etc/systemd/system
+
+chmod 640 /etc/systemd/system/udpgw.service
+chmod 640 /etc/systemd/system/udp-custom.service
+
+systemctl daemon-reload &>/dev/null
+systemctl enable udpgw &>/dev/null
+systemctl start udpgw &>/dev/null
+systemctl enable udp-custom &>/dev/null
+systemctl start udp-custom &>/dev/null
+
+# [+config+]
+wget "https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/config/config.json" -O /root/udp/config.json &>/dev/null
+chmod +x /root/udp/config.json
+
+# [+menu+]
+wget -O /usr/bin/udp 'https://raw.githubusercontent.com/maddix123/UDP-by-meddix-pro/main/module/udp' 
+chmod +x /usr/bin/udp
+
+# [+Deploy Web Portal on Port 200+]
+echo "📦 Deploying Web Portal on Port 200..."
+rm -rf /etc/UDPCustom/web-portal
+mkdir -p /etc/UDPCustom/web-portal
+rm -rf /tmp/udp-by-meddix-pro
+git clone https://github.com/maddix123/UDP-by-meddix-pro.git /tmp/udp-by-meddix-pro &>/dev/null
+cp -r /tmp/udp-by-meddix-pro/web-portal/* /etc/UDPCustom/web-portal/
+
+# 🔥 RESTORE: Safely restore their pre-filled client details from backup
+if [ -d "/tmp/udp_expiration_backup" ]; then
+    echo "♻️ Restoring your existing user expiration & contact details..."
+    mkdir -p /etc/UDPCustom/expiration
+    cp -r /tmp/udp_expiration_backup/* /etc/UDPCustom/expiration/
+    rm -rf /tmp/udp_expiration_backup
+    echo "✅ Restore completed successfully!"
+fi
+
+cd /etc/UDPCustom/web-portal
+npm install --legacy-peer-deps &>/dev/null
+pm2 delete udp-web-portal 2>/dev/null || true
+pm2 start server.js --name udp-web-portal
+pm2 save &>/dev/null
+
+ufw disable &>/dev/null
+sudo apt-get remove --purge ufw firewalld -y &>/dev/null
+apt remove netfilter-persistent -y &>/dev/null
+clear
+echo ""
+echo ""
+print_center -ama "${a103:-setting up, please wait...}"
+sleep 3
+title "${a102:-Installation Successful}"
+print_center -ama "To show CLI menu type: udp\n"
+print_center -ama "Web Portal URL: http://your-ip:200\n"
+msg -bar
+time_reboot 5
