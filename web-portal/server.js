@@ -152,7 +152,7 @@ async function sendClient2GBLimitWarning(username, email, bytesUsed) {
     const alertHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 550px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
         <h2 style="text-align: center; color: #ef4444; border-bottom: 2px solid #24314f; padding-bottom: 12px;">⚠️ Daily Data Limit Alert</h2>
-        <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6; margin-top: 16px;">Hello <strong>${username}</strong>,</p>
+        <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6;">Hello <strong>${username}</strong>,</p>
         <p style="font-size: 14px; line-height: 1.6; color: #9ca3af; margin-top: 10px;">
           This is an automated notification from **Meddix Pro VPN Service** that you have reached or exceeded your daily bandwidth threshold.
         </p>
@@ -445,6 +445,65 @@ async function sendClientWelcomeEmail(username, email, password, duration, limit
   }
 }
 
+// 🔥 INSTANT RENEWAL EMAIL CONFIRMATION GENERATOR
+async function sendClientRenewalConfirmation(username, email, newExpDateString, serverIp) {
+  try {
+    const passwdLine = await execPromise(`cat /etc/passwd | grep "^${username}:" || true`);
+    if (!passwdLine) return;
+
+    const parts = passwdLine.split(':');
+    if (parts.length < 5) return;
+    
+    const commentParts = parts[4].split(',');
+    const limit = commentParts[0] || '1';
+    const password = commentParts[1] || 'No password';
+    const profileLine = `${serverIp}:1-65535@${username}:${password}`;
+
+    const renewalHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
+        <h2 style="text-align: center; color: #10b981; border-bottom: 2px solid #24314f; padding-bottom: 12px;">✅ Account Renewed Successfully</h2>
+        <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6; margin-top: 16px;">Hello <strong>${username}</strong>,</p>
+        <p style="font-size: 14px; line-height: 1.6; color: #d1d5db; margin-top: 10px;">
+          This is an automated confirmation that your high-speed **UDP Custom Tunnel Account** has been successfully renewed by the administrator!
+        </p>
+        
+        <h3 style="color: #10b981; margin-top: 24px; border-bottom: 1px solid #24314f; padding-bottom: 6px; font-size: 14px; text-transform: uppercase;">📋 Your Tunnel Details</h3>
+        <div style="background: #151d30; border-radius: 8px; padding: 16px; margin: 12px 0; border: 1px solid #24314f; font-family: monospace; font-size: 13px;">
+          <div style="margin-bottom: 6px;">👤 Username: <strong>${username}</strong></div>
+          <div style="margin-bottom: 6px;">🔑 Password: <strong>${password}</strong></div>
+          <div style="margin-bottom: 6px; color: #10b981;">📅 New Expiry: <strong>${newExpDateString}</strong></div>
+          <div>💻 Limit: <strong>${limit} concurrent connections</strong></div>
+        </div>
+
+        <h3 style="color: #4f46e5; margin-top: 24px; border-bottom: 1px solid #24314f; padding-bottom: 6px; font-size: 14px; text-transform: uppercase;">🚀 HTTP Custom Profile</h3>
+        <p style="font-size: 13px; color: #9ca3af; margin-bottom: 8px;">Copy the connection profile line below and paste it directly into your HTTP Custom application:</p>
+        <div style="background: #0b0f19; border: 1px solid #24314f; border-radius: 8px; padding: 12px 14px; font-family: monospace; font-size: 13px; color: #4f46e5; word-break: break-all;">
+          ${profileLine}
+        </div>
+        
+        <p style="font-size: 13px; line-height: 1.5; color: #9ca3af; margin-top: 20px;">
+          If you have any questions, please contact our support desk at <a href="mailto:ahmedmutumba@gmail.com" style="color: #4f46e5; text-decoration: none;">ahmedmutumba@gmail.com</a>.
+        </p>
+        
+        <div style="text-align: center; margin-top: 30px; font-size: 11px; color: #9ca3af; border-top: 1px dashed #24314f; padding-top: 12px;">
+          Thank you for continuing to use Meddix Pro VPN Service!
+        </div>
+      </div>
+    `;
+
+    await transporter.sendMail({
+      from: '"Meddix Pro Billing" <info@mods99.com>',
+      to: email,
+      subject: `✅ [Success] Your UDP Tunnel Account Has Been Renewed!`,
+      html: renewalHtml
+    });
+
+    console.log(`✉️ Renewal confirmation email successfully sent to client: ${username} (${email})`);
+  } catch (err) {
+    console.error(`Failed to send renewal confirmation to ${username}:`, err.message);
+  }
+}
+
 // Active daily scheduler check running every minute
 let lastSentDay = null;
 setInterval(() => {
@@ -620,7 +679,7 @@ app.post('/api/users', async (req, res) => {
       sent2GBWarningToday: false,
       lastResetDate: new Date().toISOString().split('T')[0]
     };
-    fs.mkdirSync('/etc/UDPCustom/expiration', { recursive: true });
+    fs.mkdirSync('/etc/UDPCustom', { recursive: true });
     fs.writeFileSync(`/etc/UDPCustom/expiration/${username}`, JSON.stringify(metadata, null, 2));
 
     const validDate = await execPromise(`date '+%C%y-%m-%d' -d " +${daysRounded} days"`);
@@ -732,7 +791,7 @@ app.post('/api/users/update-details', async (req, res) => {
   }
 });
 
-// POST /api/users/renew - Renew user expiration
+// POST /api/users/renew - Renew user expiration (Includes Instant Email Confirmation!)
 app.post('/api/users/renew', async (req, res) => {
   try {
     const { username, duration } = req.body;
@@ -798,10 +857,77 @@ app.post('/api/users/renew', async (req, res) => {
 
     await execPromise(`chage -E "${validDate}" "${username}"`);
 
-    res.json({ message: 'User renewed successfully', expDate: new Date(expTimestamp * 1000).toLocaleString() });
+    const newExpDateString = new Date(expTimestamp * 1000).toLocaleString();
+
+    // 🔥 SEND RENEWAL CONFIRMATION EMAIL IMMEDIATELY IF CLIENT EMAIL IS FILLED!
+    if (currentEmail && currentEmail.trim() !== '') {
+      const serverIp = req.headers.host?.split(':')[0] || 'your-server-ip';
+      sendClientRenewalConfirmation(username, currentEmail, newExpDateString, serverIp).catch(console.error);
+    }
+
+    res.json({ message: 'User renewed successfully', expDate: newExpDateString });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to renew user' });
+  }
+});
+
+// POST /api/admin/broadcast - Send custom email broadcast announcement to all active clients!
+app.post('/api/admin/broadcast', async (req, res) => {
+  try {
+    const { subject, message } = req.body;
+    if (!subject || !message) return res.status(400).json({ error: 'Subject and message are required' });
+
+    const usersRaw = await execPromise("cat /etc/passwd | grep 'home' | grep 'false' | grep -v 'syslog' | grep -v 'hwid' | grep -v 'token' | grep -v '::/' || true");
+    if (!usersRaw) return res.json({ message: 'No users found on the system to broadcast' });
+
+    const lines = usersRaw.split('\n');
+    let emailCount = 0;
+
+    for (const line of lines) {
+      const username = line.split(':')[0];
+      const expFile = `/etc/UDPCustom/expiration/${username}`;
+
+      if (fs.existsSync(expFile)) {
+        try {
+          const raw = fs.readFileSync(expFile, 'utf8').trim();
+          if (raw.startsWith('{')) {
+            const data = JSON.parse(raw);
+            const clientEmail = data.email;
+
+            if (clientEmail && clientEmail.trim() !== '') {
+              const broadcastHtml = `
+                <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 20px; background: #0b0f19; color: #f3f4f6; border-radius: 12px; border: 1px solid #24314f;">
+                  <h2 style="text-align: center; color: #4f46e5; border-bottom: 2px solid #24314f; padding-bottom: 12px;">📢 Important Announcement: Meddix Pro</h2>
+                  <p style="font-size: 15px; line-height: 1.5; color: #f3f4f6; margin-top: 16px;">Hello <strong>${username}</strong>,</p>
+                  <p style="font-size: 14px; line-height: 1.6; color: #d1d5db; margin-top: 12px; white-space: pre-wrap;">
+                    ${message}
+                  </p>
+                  <div style="text-align: center; margin-top: 30px; font-size: 11px; color: #9ca3af; border-top: 1px dashed #24314f; padding-top: 12px;">
+                    This announcement was dispatched by Meddix Pro Tunnel Administrators.
+                  </div>
+                </div>
+              `;
+
+              await transporter.sendMail({
+                from: '"Meddix Pro VPN" <info@mods99.com>',
+                to: clientEmail,
+                subject: `📢 ${subject}`,
+                html: broadcastHtml
+              });
+              emailCount++;
+            }
+          }
+        } catch (e) {
+          console.error(`Failed to send broadcast email to ${username}:`, e);
+        }
+      }
+    }
+
+    res.json({ message: `Broadcast successfully delivered to ${emailCount} active client emails!` });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to complete broadcast operations' });
   }
 });
 

@@ -258,6 +258,22 @@
           </form>
         </div>
 
+        <!-- 📢 BROADCAST MESSAGE CENTER -->
+        <div class="section">
+          <h2>Email Broadcast Center</h2>
+          <form id="broadcast-form" onsubmit="sendBroadcast(event)">
+            <div class="form-group">
+              <label>Subject / Title</label>
+              <input type="text" id="broad-subject" required placeholder="e.g. Important System Maintenance Notice">
+            </div>
+            <div class="form-group">
+              <label>Message Content</label>
+              <textarea id="broad-msg" rows="5" required placeholder="Type your important announcement or message to be sent to all your clients..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" style="background: var(--success);">📢 Broadcast Announcement</button>
+          </form>
+        </div>
+
         <!-- Custom Portal Settings -->
         <div class="section">
           <h2>Portal Settings Center</h2>
@@ -333,48 +349,35 @@
 
   <div class="toast-container" id="toast-container"></div>
 
+  <script src="js/app-v2.js"></script>
   <script>
-    const API_URL = '';
-
-    document.addEventListener('DOMContentLoaded', () => {
-      loadUsers();
-      loadSettings();
-    });
-
-    async function loadSettings() {
-      try {
-        const res = await fetch(`${API_URL}/api/settings`);
-        const data = await res.json();
-        if (data.welcomeMessage) {
-          document.getElementById('settings-welcome-msg').value = data.welcomeMessage;
-        }
-      } catch (err) {
-        console.error('Failed to load settings:', err);
-      }
-    }
-
-    async function saveSettings(e) {
+    // Overriding / adding JS logic dynamically so they don't have to clear cache
+    async function sendBroadcast(e) {
       e.preventDefault();
-      const welcomeMessage = document.getElementById('settings-welcome-msg').value.trim();
+      const subject = document.getElementById('broad-subject').value.trim();
+      const message = document.getElementById('broad-msg').value.trim();
 
       try {
-        const res = await fetch(`${API_URL}/api/settings`, {
+        showToast('info', 'Broadcasting', 'Dispatching email announcement to all registered clients...');
+        const res = await fetch('/api/admin/broadcast', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ welcomeMessage })
+          body: JSON.stringify({ subject, message })
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
 
-        showToast('success', 'Settings Saved', 'Custom welcome message saved successfully!');
+        showToast('success', 'Broadcast Dispatched 📢', data.message);
+        document.getElementById('broadcast-form').reset();
       } catch (err) {
-        showToast('error', 'Failed to Save', err.message);
+        showToast('error', 'Broadcast Failed', err.message);
       }
     }
 
+    // Overriding loadUsers to display data counters and copy profile buttons beautifully
     async function loadUsers() {
       try {
-        const res = await fetch(`${API_URL}/api/users`);
+        const res = await fetch('/api/users');
         const data = await res.json();
         const container = document.getElementById('users-container');
 
@@ -388,7 +391,6 @@
           return;
         }
 
-        // Get active server IP / hostname dynamically
         const server_ip = window.location.hostname;
 
         container.innerHTML = data.users.map(u => {
@@ -408,6 +410,10 @@
             ? `<div style="font-size: 11px; color: var(--warning); margin-top: 4px;">📩 Reminder Details: ${u.clientEmail || 'N/A'} | ${u.clientPhone || 'N/A'}</div>` 
             : '';
 
+          // Display real-time iptables daily data usage cleanly (e.g. 📊 Used Today: 1.25 GB / 2.00 GB)
+          const usageColor = (u.dailyBytes >= 2147483648) ? 'var(--danger)' : 'var(--success)';
+          const dataLine = `<div style="font-size: 11px; color: ${usageColor}; margin-top: 4px; font-weight: bold;">📊 Daily Usage: ${u.dailyUsage} / 2.00 GB</div>`;
+
           return `
             <div class="user-item" style="flex-direction: column; align-items: stretch; gap: 14px;">
               <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -415,6 +421,7 @@
                   <div style="font-weight: 700; font-size: 15px;">${u.username} <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">(Limit: ${u.limit})</span></div>
                   <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Pass: <strong>${u.password}</strong> | Expiry: ${u.expDate}</div>
                   ${detailsLine}
+                  ${dataLine}
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                   <span class="status-badge ${badgeClass}">${badgeText}</span>
@@ -439,159 +446,6 @@
       } catch (err) {
         showToast('error', 'Load Failed', 'Failed to retrieve clients from server');
       }
-    }
-
-    function copyProfileToClipboard(username) {
-      const text = document.getElementById(`profile-${username}`).textContent;
-      navigator.clipboard.writeText(text);
-      showToast('success', 'Profile Copied', 'Profile credential copied to clipboard!');
-    }
-
-    async function createUser(e) {
-      e.preventDefault();
-      const username = document.getElementById('reg-username').value.trim();
-      const password = document.getElementById('reg-password').value.trim();
-      const duration = document.getElementById('reg-duration').value.trim();
-      const limit = parseInt(document.getElementById('reg-limit').value, 10);
-      const email = document.getElementById('reg-email').value.trim();
-      const phone = document.getElementById('reg-phone').value.trim();
-
-      try {
-        const res = await fetch(`${API_URL}/api/users`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password, duration, limit, email, phone })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Creation failed');
-
-        showToast('success', 'User Created', `Account "${username}" created successfully!`);
-        document.getElementById('create-user-form').reset();
-        loadUsers();
-      } catch (err) {
-        showToast('error', 'Error', err.message);
-      }
-    }
-
-    function openRenewModal(username) {
-      document.getElementById('renew-username').value = username;
-      document.getElementById('renew-username-title').textContent = username;
-      document.getElementById('renew-duration').value = '30d';
-      document.getElementById('renew-modal').classList.add('active');
-    }
-
-    async function submitRenew(e) {
-      e.preventDefault();
-      const username = document.getElementById('renew-username').value;
-      const duration = document.getElementById('renew-duration').value.trim();
-
-      try {
-        const res = await fetch(`${API_URL}/api/users/renew`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, duration })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
-        showToast('success', 'User Renewed', `Account "${username}" extended successfully!`);
-        closeModal('renew-modal');
-        loadUsers();
-      } catch (err) {
-        showToast('error', 'Error', err.message);
-      }
-    }
-
-    function openEditModal(username, email, phone) {
-      document.getElementById('edit-username').value = username;
-      document.getElementById('edit-username-title').textContent = username;
-      document.getElementById('edit-email').value = (email && email !== 'undefined' && email !== 'null') ? email : '';
-      document.getElementById('edit-phone').value = (phone && phone !== 'undefined' && phone !== 'null') ? phone : '';
-      document.getElementById('edit-modal').classList.add('active');
-    }
-
-    async function submitEdit(e) {
-      e.preventDefault();
-      const username = document.getElementById('edit-username').value;
-      const email = document.getElementById('edit-email').value.trim();
-      const phone = document.getElementById('edit-phone').value.trim();
-
-      try {
-        const res = await fetch(`${API_URL}/api/users/update-details`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, email, phone })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
-        showToast('success', 'Details Saved', `Client "${username}" contact details updated successfully!`);
-        closeModal('edit-modal');
-        loadUsers();
-      } catch (err) {
-        showToast('error', 'Error', err.message);
-      }
-    }
-
-    async function toggleBlock(username) {
-      try {
-        const res = await fetch(`${API_URL}/api/users/block`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
-        showToast('success', 'Status Updated', data.message);
-        loadUsers();
-      } catch (err) {
-        showToast('error', 'Error', err.message);
-      }
-    }
-
-    async function deleteUser(username) {
-      if (!confirm(`Are you sure you want to permanently delete user "${username}"?`)) return;
-
-      try {
-        const res = await fetch(`${API_URL}/api/users/${username}`, {
-          method: 'DELETE'
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-
-        showToast('success', 'User Deleted', `Account "${username}" permanently purged`);
-        loadUsers();
-      } catch (err) {
-        showToast('error', 'Error', err.message);
-      }
-    }
-
-    async function sendTestEmail() {
-      try {
-        showToast('info', 'Sending Email', 'Compiling and dispatching expiration report...');
-        const res = await fetch(`${API_URL}/api/admin/send-test-email`, {
-          method: 'POST'
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error);
-        showToast('success', 'Email Sent 📧', data.message);
-      } catch (err) {
-        showToast('error', 'Email Failed', err.message);
-      }
-    }
-
-    function closeModal(id) {
-      document.getElementById(id).classList.remove('active');
-    }
-
-    function showToast(type, title, message) {
-      const container = document.getElementById('toast-container');
-      const toast = document.createElement('div');
-      toast.className = `toast ${type}`;
-      toast.innerHTML = `<h4>${title}</h4><p>${message}</p>`;
-      container.appendChild(toast);
-      setTimeout(() => toast.remove(), 4000);
     }
   </script>
 </body>
