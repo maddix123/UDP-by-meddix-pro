@@ -59,26 +59,38 @@ function getSettings() {
 
 // ==================== BANDWIDTH DATA ACCOUNTING ENGINE ====================
 
-// Fetch precise real-time iptables traffic counters for a specific user
+// Fetch precise real-time iptables traffic counters for a specific user (robust exact match)
 async function getUserBandwidth(username) {
   try {
     const uid = await execPromise(`id -u ${username}`).catch(() => null);
     if (!uid) return { upload: 0, download: 0, total: 0 };
 
     // Downlink (Data sent from server to client - OUTPUT rules)
-    const iptablesOutput = await execPromise(`iptables -L OUTPUT -v -n -x | grep -i "${uid}" || true`);
+    const iptablesOutput = await execPromise(`iptables -L OUTPUT -v -n -x || true`);
     let downloadBytes = 0;
     if (iptablesOutput) {
-      const parts = iptablesOutput.trim().split('\n')[0].trim().split(/\s+/);
-      downloadBytes = parseInt(parts[1], 10) || 0;
+      const lines = iptablesOutput.split('\n');
+      const regex = new RegExp(`owner\\s+UID\\s+match\\s+${uid}(\\s|$)`, 'i');
+      for (const line of lines) {
+        if (regex.test(line)) {
+          const parts = line.trim().split(/\s+/);
+          downloadBytes += parseInt(parts[1], 10) || 0;
+        }
+      }
     }
 
     // Uplink (Data received by server from client - INPUT rules)
-    const iptablesInput = await execPromise(`iptables -L INPUT -v -n -x | grep -i "${uid}" || true`);
+    const iptablesInput = await execPromise(`iptables -L INPUT -v -n -x || true`);
     let uploadBytes = 0;
     if (iptablesInput) {
-      const parts = iptablesInput.trim().split('\n')[0].trim().split(/\s+/);
-      uploadBytes = parseInt(parts[1], 10) || 0;
+      const lines = iptablesInput.split('\n');
+      const regex = new RegExp(`owner\\s+UID\\s+match\\s+${uid}(\\s|$)`, 'i');
+      for (const line of lines) {
+        if (regex.test(line)) {
+          const parts = line.trim().split(/\s+/);
+          uploadBytes += parseInt(parts[1], 10) || 0;
+        }
+      }
     }
 
     return {
@@ -90,6 +102,58 @@ async function getUserBandwidth(username) {
     console.error('Bandwidth calculation error:', e);
     return { upload: 0, download: 0, total: 0 };
   }
+}
+
+// Fetch real-time bandwidth counters for all users in a single pass (highly optimized!)
+async function getAllUsersBandwidth() {
+  const bandwidthMap = {}; // uid -> { upload: 0, download: 0, total: 0 }
+
+  try {
+    // 1. Get all OUTPUT rules (Downlink / Download)
+    const outputLines = await execPromise('iptables -L OUTPUT -v -n -x || true');
+    if (outputLines) {
+      const lines = outputLines.split('\n');
+      for (const line of lines) {
+        if (line.includes('owner UID match')) {
+          const match = line.match(/owner\s+UID\s+match\s+(\d+)/i);
+          if (match) {
+            const uid = match[1];
+            const parts = line.trim().split(/\s+/);
+            const bytes = parseInt(parts[1], 10) || 0;
+            if (!bandwidthMap[uid]) bandwidthMap[uid] = { upload: 0, download: 0, total: 0 };
+            bandwidthMap[uid].download += bytes;
+          }
+        }
+      }
+    }
+
+    // 2. Get all INPUT rules (Uplink / Upload)
+    const inputLines = await execPromise('iptables -L INPUT -v -n -x || true');
+    if (inputLines) {
+      const lines = inputLines.split('\n');
+      for (const line of lines) {
+        if (line.includes('owner UID match')) {
+          const match = line.match(/owner\s+UID\s+match\s+(\d+)/i);
+          if (match) {
+            const uid = match[1];
+            const parts = line.trim().split(/\s+/);
+            const bytes = parseInt(parts[1], 10) || 0;
+            if (!bandwidthMap[uid]) bandwidthMap[uid] = { upload: 0, download: 0, total: 0 };
+            bandwidthMap[uid].upload += bytes;
+          }
+        }
+      }
+    }
+
+    // Compute totals
+    for (const uid in bandwidthMap) {
+      bandwidthMap[uid].total = bandwidthMap[uid].download + bandwidthMap[uid].upload;
+    }
+  } catch (err) {
+    console.error('Error in getAllUsersBandwidth:', err);
+  }
+
+  return bandwidthMap;
 }
 
 // Background scheduler running every 5 minutes to audit and reset daily data usage
@@ -549,6 +613,10 @@ app.get('/api/users', async (req, res) => {
     const usersRaw = await execPromise("cat /etc/passwd | grep 'home' | grep 'false' | grep -v 'syslog' | grep -v 'hwid' | grep -v 'token' | grep -v '::/' || true");
     if (!usersRaw) return res.json({ users: [] });
 
+    // Fetch precise real-time bandwidth map for all users in one go
+    const bandwidthMap = await getAllUsersBandwidth();
+    const todayStr = new Date().toISOString().split('T')[0];
+
     const lines = usersRaw.split('\n');
     const users = [];
 
@@ -557,6 +625,7 @@ app.get('/api/users', async (req, res) => {
       if (parts.length < 5) continue;
       
       const username = parts[0];
+      const uid = parts[2]; // UID of the user from /etc/passwd
       const commentParts = parts[4].split(',');
       const limit = commentParts[0] || '1';
       const password = commentParts[1] || 'No password';
@@ -581,7 +650,21 @@ app.get('/api/users', async (req, res) => {
             expTimestamp = data.expTimestamp;
             clientEmail = data.email || '';
             clientPhone = data.phone || '';
-            dailyBytes = data.dailyBytes || 0;
+            
+            // Get live bandwidth from the pre-fetched map
+            const liveBytes = (bandwidthMap[uid] && bandwidthMap[uid].total) || 0;
+
+            // Sync with file
+            if (data.lastResetDate !== todayStr) {
+              data.dailyBytes = 0;
+              data.sent2GBWarningToday = false;
+              data.lastResetDate = todayStr;
+            } else {
+              data.dailyBytes = liveBytes;
+            }
+            
+            dailyBytes = data.dailyBytes;
+            fs.writeFileSync(expFile, JSON.stringify(data, null, 2));
           } else {
             expTimestamp = parseInt(rawContent, 10);
           }
